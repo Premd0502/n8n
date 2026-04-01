@@ -1,0 +1,266 @@
+{
+  "name": "Enterprise Multi-ISO AI Auditor + Document Generator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "bc701767-9666-4797-8e73-31443da3bb1f",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "standard",
+              "value": "ISO27001"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "101e7cad-a7b3-4630-aa3d-c81d3d8347cc",
+      "name": "Select Standard",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/home/node/.n8n-files/policy/Business-Continuity-Plan-IS1506.pdf"
+      },
+      "id": "b717e43f-e937-497e-89e9-0f192fced2e2",
+      "name": "Read Policy",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "bfb8bceb-c1ae-4d06-8921-3df931d8766c",
+      "name": "Extract Policy Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const standard = $json.standard || \"ISO27001\";\nconst text = $json.text || \"\";\n\nconst prompts = {\n  ISO27001: `Generate ISO 27001:2022 Annex-A controls (93 controls).\nFor each control provide:\n- Control Name\n- Policy Coverage\n- Required Documents\n- Evidence Required\n- Audit Findings\n- Compliance Status\n- Risk Level\n- Recommendation`,\n\n  ISO27701: `Generate Privacy controls (PII handling, GDPR alignment). Include policy mapping, evidence, findings.`,\n\n  ISO27017: `Generate Cloud Security controls (shared responsibility, IAM, virtualization, cloud risks).`,\n\n  ISO42001: `Generate AI governance controls (bias, lifecycle, monitoring, ethics).`,\n\n  ISO23894: `Generate AI Risk Management controls (risk identification, mitigation).`,\n\n  SOC2: `Generate SOC 2 Type II controls (Security, Availability, Confidentiality). Include audit findings.`\n};\n\nreturn [{\n  prompt: prompts[standard],\n  standard,\n  text\n}];"
+      },
+      "id": "daddca3c-5e1f-49c4-a4d9-7a86bad47c8c",
+      "name": "Build Control Generator Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        400,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Authorization\": \"Bearer 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\", \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'llama-3.3-70b-versatile', messages: [ { role: 'system', content: $json.prompt }, { role: 'user', content: 'Policy Content: ' + $json.text } ], temperature: 0.2 } }}",
+        "options": {}
+      },
+      "id": "6232142b-b136-4ff3-ae2b-bdda841f2649",
+      "name": "AI Control Generator + Auditor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        608,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{\n  html: `\n  <h1>${$json.standard} Audit Report</h1>\n\n  <h2>Summary</h2>\n  <p>Generated AI Audit Report</p>\n\n  <h2>Findings</h2>\n  <pre>${$json.choices[0].message.content}</pre>\n  `\n}];"
+      },
+      "id": "2d57422a-9e64-42a2-9de2-aa08fe4d8c91",
+      "name": "Format Word Content",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        800,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "/home/node/.n8n-files/doc_output/ISMS_Final_Report.docx",
+        "dataPropertyName": "=data",
+        "options": {}
+      },
+      "id": "235acb55-f6a9-479c-a631-ae6e441a8caf",
+      "name": "Save Word File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "html",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        112
+      ],
+      "id": "68509a95-5fbc-4a94-b313-052340cd1c2b",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-htmlcsstopdf.htmlcsstopdf",
+      "typeVersion": 1,
+      "position": [
+        880,
+        400
+      ],
+      "id": "de45b068-1572-4d63-9061-73827fc62ab7",
+      "name": "Convert HTML to PDF",
+      "credentials": {
+        "htmlcsstopdfApi": {
+          "id": "sh4BrNiTTvNX8Ckw",
+          "name": "HTML to PDF account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Select Standard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Standard": {
+      "main": [
+        [
+          {
+            "node": "Read Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Policy": {
+      "main": [
+        [
+          {
+            "node": "Extract Policy Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Policy Text": {
+      "main": [
+        [
+          {
+            "node": "Build Control Generator Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Control Generator Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Control Generator + Auditor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Control Generator + Auditor": {
+      "main": [
+        [
+          {
+            "node": "Format Word Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Word Content": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Word File": {
+      "main": [
+        []
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Save Word File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "dd932a65-0a4b-47ae-af02-6ae98f575822",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "3HzztZhD5eO13KAr",
+  "tags": []
+}

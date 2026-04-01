@@ -1,0 +1,204 @@
+{
+  "name": "24x7 Linux AI Performance Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {}
+          ]
+        }
+      },
+      "name": "Cron Monitor",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        -64
+      ],
+      "id": "d7d966ef-cbf2-4464-9bb3-ab39be4c7d01"
+    },
+    {
+      "parameters": {
+        "command": "echo \"===== BASIC HEALTH =====\"; uptime; echo \"CPU CORES:\"; nproc; echo \"===== FREE =====\"; free -m; echo \"===== VMSTAT =====\"; vmstat 1 3; echo \"===== DISK =====\"; df -h; echo \"===== IO =====\"; iostat -x 1 2; echo \"===== NETWORK =====\"; ss -s;"
+      },
+      "name": "Quick Health Check",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -208
+      ],
+      "id": "65528140-abfe-4468-aa26-9fafd3012b20",
+      "credentials": {
+        "sshPassword": {
+          "id": "yPXn96QmV22JS4wO",
+          "name": "DB_Restore_ssh"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = $json.stdout;\n\nconst loadMatch = data.match(/load average: ([0-9\\.]+)/);\nconst cpuMatch = data.match(/CPU CORES:\\n(\\d+)/);\n\nlet load = loadMatch ? parseFloat(loadMatch[1]) : 0;\nlet cores = cpuMatch ? parseInt(cpuMatch[1]) : 1;\n\nconst abnormal = load > cores;\n\nreturn [{ json: { load, cores, abnormal, raw: data } }];"
+      },
+      "name": "Analyze Threshold",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        -96
+      ],
+      "id": "554785b6-78f3-4a35-88cb-7c98a609557b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.abnormal}}"
+            }
+          ]
+        }
+      },
+      "name": "If Abnormal",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        -96
+      ],
+      "id": "ea1bd8dc-fd8a-4d22-ac8b-393042a66c03"
+    },
+    {
+      "parameters": {
+        "command": "echo \"===== FULL DIAGNOSTIC =====\"; top -b -n1 | head -30; echo \"===== MYSQL =====\"; mysqladmin processlist; echo \"===== NFS =====\"; mount | grep nfs; echo \"===== SAMBA =====\"; systemctl status smb; echo \"===== DMESG =====\"; dmesg | tail -50; echo \"===== JOURNAL ERRORS =====\"; journalctl -p 3 -n 50 --no-pager;"
+      },
+      "name": "Deep Diagnostic",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        16,
+        -64
+      ],
+      "id": "fb95ae27-25e6-4d9a-adff-50ea4c207f53",
+      "credentials": {
+        "sshPassword": {
+          "id": "OMBZ5oNr0L7dliy8",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ json: { report: $json.response } }];"
+      },
+      "name": "Prepare Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        208,
+        -64
+      ],
+      "id": "4820202c-e2c4-4d2c-8a71-1d1633c6032c"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        176
+      ],
+      "id": "167b9315-132a-4fde-b9d4-8660c29c25ee",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPassword": {
+          "id": "sorafQAlmtOWgx6I",
+          "name": "SSH Password account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron Monitor": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quick Health Check": {
+      "main": [
+        [
+          {
+            "node": "Analyze Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Threshold": {
+      "main": [
+        [
+          {
+            "node": "If Abnormal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Abnormal": {
+      "main": [
+        [
+          {
+            "node": "Deep Diagnostic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deep Diagnostic": {
+      "main": [
+        [
+          {
+            "node": "Prepare Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Quick Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "14c2c635-5e68-44f0-86a2-e72d2024886a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "x6sQoxg65QJ31G8G",
+  "tags": []
+}

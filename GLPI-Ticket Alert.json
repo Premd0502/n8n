@@ -1,0 +1,585 @@
+{
+  "name": "GLPI-Ticket Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "c1353104-7352-40ba-af96-bb6332bf832f",
+      "name": "⏰ Poll Every 1 Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2208,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// State tracking - store last seen ticket IDs in workflow static data\nconst workflowStaticData = $getWorkflowStaticData('global');\nif (!workflowStaticData.processedTicketIds) {\n  workflowStaticData.processedTicketIds = [];\n}\nif (!workflowStaticData.lastPollTime) {\n  workflowStaticData.lastPollTime = new Date(Date.now() - 60000).toISOString();\n}\n\nconst lastPoll = workflowStaticData.lastPollTime;\nworkflowStaticData.lastPollTime = new Date().toISOString();\n\nreturn [{ json: { lastPollTime: lastPoll, currentTime: workflowStaticData.lastPollTime } }];"
+      },
+      "id": "4c54e1ae-9020-47cc-892e-821b34c35958",
+      "name": "📋 State Manager",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1984,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://YOUR_GLPI_URL/apirest.php/initSession",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "user_token YOUR_GLPI_USER_TOKEN"
+            },
+            {
+              "name": "App-Token",
+              "value": "YOUR_GLPI_APP_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "87e657fb-cc32-4094-8527-821e1dedb6a8",
+      "name": "🔐 GLPI Init Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1760,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://YOUR_GLPI_URL/apirest.php/Ticket",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "is_deleted",
+              "value": "0"
+            },
+            {
+              "name": "sort",
+              "value": "id"
+            },
+            {
+              "name": "order",
+              "value": "DESC"
+            },
+            {
+              "name": "range",
+              "value": "0-50"
+            },
+            {
+              "name": "expand_dropdowns",
+              "value": "true"
+            },
+            {
+              "name": "searchText[status]",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $json.session_token }}"
+            },
+            {
+              "name": "App-Token",
+              "value": "YOUR_GLPI_APP_TOKEN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b9c0f6b3-2834-4b2c-8c95-cd96b1dc2ea3",
+      "name": "📥 GLPI Fetch New Tickets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1536,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract tickets from GLPI response\n// GLPI returns array directly or nested under 'data'\nconst response = $input.first().json;\nlet tickets = [];\n\nif (Array.isArray(response)) {\n  tickets = response;\n} else if (response.data && Array.isArray(response.data)) {\n  tickets = response.data;\n} else if (typeof response === 'object' && !response.error) {\n  // Sometimes GLPI returns object with numeric keys\n  tickets = Object.values(response).filter(v => typeof v === 'object' && v.id);\n}\n\nif (tickets.length === 0) {\n  return [{ json: { hasTickets: false, tickets: [] } }];\n}\n\n// Filter only new tickets not yet processed\nconst workflowStaticData = $getWorkflowStaticData('global');\nconst processedIds = workflowStaticData.processedTicketIds || [];\n\nconst newTickets = tickets.filter(t => !processedIds.includes(String(t.id)));\n\nif (newTickets.length === 0) {\n  return [{ json: { hasTickets: false, tickets: [] } }];\n}\n\n// Mark these as processed\nworkflowStaticData.processedTicketIds = [\n  ...processedIds,\n  ...newTickets.map(t => String(t.id))\n].slice(-500); // Keep last 500 to avoid memory bloat\n\n// Return each ticket as separate item\nreturn newTickets.map(ticket => ({\n  json: {\n    hasTickets: true,\n    ticketId: ticket.id,\n    ticketName: ticket.name || '',\n    ticketContent: ticket.content || '',\n    ticketStatus: ticket.status,\n    ticketPriority: ticket.priority,\n    slaId: ticket.slas_id_tto || ticket.slas_id_ttr || null,\n    slaName: ticket.slaName || ticket['slas_id_tto.name'] || '',\n    dateCreation: ticket.date_creation || ticket.date || '',\n    fullTicket: ticket\n  }\n}));"
+      },
+      "id": "3675ea79-e796-4c28-964f-9d00292c21cf",
+      "name": "🔍 Parse & Filter New Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-tickets",
+              "leftValue": "={{ $json.hasTickets }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "636d1643-4955-4b61-9f0f-6667d96e5aef",
+      "name": "✅ Has New Tickets?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read"
+      },
+      "id": "26c98c3a-71f2-4e69-acd3-3839683a3242",
+      "name": "📊 Read SLA Excel",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build SLA lookup map from Excel data\n// Expected Excel columns: SLA_Name, SLA_Timing (hours), SLA_Meaning (keywords/description)\n\nconst excelRows = $input.all();\nconst slaMap = [];\n\nfor (const row of excelRows) {\n  const data = row.json;\n  \n  // Handle various possible column name formats\n  const slaName = data['SLA_Name'] || data['SLA Name'] || data['SLAName'] || data['sla_name'] || '';\n  const slaTiming = data['SLA_Timing'] || data['SLA Timing'] || data['SLATiming'] || data['sla_timing'] || data['Hours'] || data['hours'] || '';\n  const slaMeaning = data['SLA_Meaning'] || data['SLA Meaning'] || data['SLAMeaning'] || data['sla_meaning'] || data['Meaning'] || data['Keywords'] || '';\n  \n  if (!slaName && !slaTiming) continue;\n  \n  const timingHours = parseFloat(String(slaTiming).replace(/[^0-9.]/g, '')) || 0;\n  \n  slaMap.push({\n    slaName: String(slaName).trim(),\n    timingHours: timingHours,\n    timingLabel: `${timingHours} hour${timingHours !== 1 ? 's' : ''}`,\n    slaMeaning: String(slaMeaning).trim(),\n    keywords: String(slaMeaning).toLowerCase().split(/[,;|\\n]+/).map(k => k.trim()).filter(k => k.length > 2)\n  });\n}\n\n// Store SLA map in static data for reuse\nconst workflowStaticData = $getWorkflowStaticData('global');\nworkflowStaticData.slaMap = slaMap;\n\nconsole.log(`Loaded ${slaMap.length} SLA rules from Excel`);\nreturn [{ json: { slaMapLoaded: true, slaCount: slaMap.length, slaMap } }];"
+      },
+      "id": "6907bf5d-6827-4545-bfc5-a56bcb022dfc",
+      "name": "🗺️ Build SLA Lookup Map",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Match each ticket against the SLA Excel map\n// Input: ticket data from node before IF, SLA map from Excel\n\nconst ticket = $('✅ Has New Tickets?').item.json;\nconst workflowStaticData = $getWorkflowStaticData('global');\nconst slaMap = workflowStaticData.slaMap || [];\n\nif (slaMap.length === 0) {\n  return [{ json: { ...ticket, slaMatched: false, matchReason: 'SLA map not loaded' } }];\n}\n\n// Text to analyze - ticket name + content\nconst ticketText = `${ticket.ticketName} ${ticket.ticketContent} ${ticket.slaName}`.toLowerCase();\n\nlet bestMatch = null;\nlet bestScore = 0;\n\nfor (const sla of slaMap) {\n  let score = 0;\n  \n  // 1. Direct SLA name match from GLPI ticket metadata\n  if (ticket.slaName && ticket.slaName.toLowerCase().includes(sla.slaName.toLowerCase())) {\n    score += 100;\n  }\n  \n  // 2. Keyword matching from SLA Meaning column\n  for (const keyword of sla.keywords) {\n    if (keyword.length > 2 && ticketText.includes(keyword)) {\n      score += 10;\n    }\n  }\n  \n  // 3. Direct hour mention in ticket\n  const hourPatterns = [\n    new RegExp(`${sla.timingHours}\\\\s*hour`, 'i'),\n    new RegExp(`${sla.timingHours}h\\\\b`, 'i'),\n    new RegExp(`sla\\\\s*${sla.timingHours}`, 'i')\n  ];\n  for (const pattern of hourPatterns) {\n    if (pattern.test(ticketText)) score += 50;\n  }\n  \n  // 4. SLA name contains hour indicator\n  if (sla.slaName && ticketText.includes(sla.slaName.toLowerCase())) {\n    score += 80;\n  }\n  \n  if (score > bestScore) {\n    bestScore = score;\n    bestMatch = sla;\n  }\n}\n\n// Fallback: check ticket priority vs SLA timing\n// GLPI Priority: 1=Very High, 2=High, 3=Medium, 4=Low, 5=Very Low, 6=Major\nif (!bestMatch || bestScore < 10) {\n  const priority = parseInt(ticket.ticketPriority) || 3;\n  if (priority <= 1) {\n    bestMatch = slaMap.find(s => s.timingHours === 1) || slaMap[0];\n  } else if (priority <= 2) {\n    bestMatch = slaMap.find(s => s.timingHours === 2) || slaMap[1];\n  } else if (priority <= 3) {\n    bestMatch = slaMap.find(s => s.timingHours === 4) || slaMap[2];\n  } else {\n    bestMatch = slaMap.find(s => s.timingHours === 6) || slaMap[slaMap.length - 1];\n  }\n  bestScore = bestMatch ? 5 : 0;\n}\n\nif (!bestMatch) {\n  return [{ json: { ...ticket, slaMatched: false, matchReason: 'No SLA match found' } }];\n}\n\n// Determine if alarm-worthy (1 hour or 2 hour SLA = critical alert)\nconst isCritical = bestMatch.timingHours <= 2;\nconst alarmType = bestMatch.timingHours === 1 ? 'ONE_HOUR' : \n                  bestMatch.timingHours === 2 ? 'TWO_HOUR' : \n                  bestMatch.timingHours === 4 ? 'FOUR_HOUR' : 'SIX_HOUR';\n\nreturn [{\n  json: {\n    ...ticket,\n    slaMatched: true,\n    matchScore: bestScore,\n    matchedSLA: {\n      name: bestMatch.slaName,\n      timingHours: bestMatch.timingHours,\n      timingLabel: bestMatch.timingLabel,\n      meaning: bestMatch.slaMeaning\n    },\n    isCritical,\n    alarmType,\n    alarmMessage: `🚨 You have a ${bestMatch.timingLabel} ticket received! Ticket #${ticket.ticketId}: ${ticket.ticketName}`,\n    speechText: `Alert! You have a ${bestMatch.timingLabel} SLA ticket received. Ticket number ${ticket.ticketId}. ${ticket.ticketName}. Please respond immediately.`\n  }\n}];"
+      },
+      "id": "4b710459-8813-47bd-9c76-399311446565",
+      "name": "🎯 Match Ticket to SLA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "is-critical",
+              "leftValue": "={{ $json.isCritical }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e188d5c1-51ee-4a71-9ebf-90dcca5d3913",
+      "name": "🚨 Is Critical SLA? (≤2hr)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate alarm HTML page with audio + speech synthesis\n// This creates a self-contained alarm page for 1hr and 2hr SLA tickets\n\nconst ticket = $input.first().json;\nconst sla = ticket.matchedSLA;\nconst isOneHour = sla.timingHours === 1;\n\nconst alarmColor = isOneHour ? '#FF0000' : '#FF6600';\nconst alarmEmoji = isOneHour ? '🔴' : '🟠';\nconst urgencyText = isOneHour ? 'CRITICAL - 1 HOUR SLA' : 'HIGH PRIORITY - 2 HOUR SLA';\n\nconst htmlContent = `<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>SLA ALARM - Ticket #${ticket.ticketId}</title>\n<style>\n  body { margin:0; background:#000; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; }\n  .alarm-box { background:${alarmColor}; color:#fff; padding:40px; border-radius:20px; text-align:center; max-width:600px; animation: pulse 0.5s infinite alternate; box-shadow: 0 0 60px ${alarmColor}; }\n  @keyframes pulse { from { transform: scale(1); opacity:1; } to { transform: scale(1.05); opacity:0.85; } }\n  .emoji { font-size:80px; }\n  .urgency { font-size:28px; font-weight:bold; letter-spacing:3px; margin:10px 0; }\n  .ticket-id { font-size:22px; margin:10px 0; }\n  .ticket-name { font-size:18px; margin:10px 0; opacity:0.9; }\n  .sla-info { background:rgba(0,0,0,0.3); padding:15px; border-radius:10px; margin:15px 0; font-size:16px; }\n  .time { font-size:14px; opacity:0.8; margin-top:10px; }\n  button { background:#fff; color:${alarmColor}; border:none; padding:15px 30px; font-size:18px; font-weight:bold; border-radius:10px; cursor:pointer; margin-top:15px; }\n</style>\n</head>\n<body>\n<div class=\"alarm-box\">\n  <div class=\"emoji\">${alarmEmoji} 🔔 ${alarmEmoji}</div>\n  <div class=\"urgency\">${urgencyText}</div>\n  <div class=\"ticket-id\">Ticket #${ticket.ticketId}</div>\n  <div class=\"ticket-name\">${ticket.ticketName || 'New Ticket Received'}</div>\n  <div class=\"sla-info\">\n    <strong>SLA:</strong> ${sla.name}<br>\n    <strong>Response Required Within:</strong> ${sla.timingLabel}<br>\n    <strong>SLA Category:</strong> ${sla.meaning}\n  </div>\n  <div class=\"time\">Received: ${new Date().toLocaleString()}</div>\n  <button onclick=\"stopAlarm()\">✅ Acknowledge</button>\n</div>\n\n<script>\n// Web Audio API alarm beep\nconst AudioContext = window.AudioContext || window.webkitAudioContext;\nlet audioCtx;\nlet alarmInterval;\nlet isStopped = false;\n\nfunction beep(frequency, duration, volume) {\n  if (isStopped) return;\n  audioCtx = audioCtx || new AudioContext();\n  const oscillator = audioCtx.createOscillator();\n  const gainNode = audioCtx.createGain();\n  oscillator.connect(gainNode);\n  gainNode.connect(audioCtx.destination);\n  oscillator.frequency.value = frequency;\n  oscillator.type = 'square';\n  gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);\n  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);\n  oscillator.start(audioCtx.currentTime);\n  oscillator.stop(audioCtx.currentTime + duration);\n}\n\nfunction playAlarm() {\n  if (isStopped) return;\n  const isOneHour = ${isOneHour};\n  if (isOneHour) {\n    // Urgent rapid beeping for 1hr SLA\n    beep(1200, 0.2, 0.8);\n    setTimeout(() => beep(800, 0.2, 0.8), 250);\n    setTimeout(() => beep(1200, 0.2, 0.8), 500);\n    setTimeout(() => beep(800, 0.2, 0.8), 750);\n  } else {\n    // Slower alert for 2hr SLA\n    beep(900, 0.4, 0.7);\n    setTimeout(() => beep(700, 0.4, 0.7), 600);\n  }\n}\n\n// Speech synthesis\nfunction speakAlert() {\n  if (isStopped || !window.speechSynthesis) return;\n  const msg = new SpeechSynthesisUtterance('${ticket.speechText.replace(/'/g, \"\\\\'\").replace(/\"/g, '')}');\n  msg.rate = 1.1;\n  msg.pitch = 1.2;\n  msg.volume = 1.0;\n  msg.lang = 'en-US';\n  window.speechSynthesis.speak(msg);\n}\n\nfunction stopAlarm() {\n  isStopped = true;\n  clearInterval(alarmInterval);\n  if (window.speechSynthesis) window.speechSynthesis.cancel();\n  document.querySelector('.alarm-box').style.animation = 'none';\n  document.querySelector('.alarm-box').style.background = '#2d7a2d';\n  document.querySelector('.urgency').textContent = '✅ ACKNOWLEDGED';\n  document.querySelector('button').textContent = 'Acknowledged - Handle Ticket Now';\n  document.querySelector('button').disabled = true;\n}\n\n// Start alarm on user interaction (browser autoplay policy)\ndocument.addEventListener('click', function startOnClick() {\n  alarmInterval = setInterval(playAlarm, 3000);\n  playAlarm();\n  speakAlert();\n  setTimeout(speakAlert, 8000); // Repeat speech\n  document.removeEventListener('click', startOnClick);\n}, { once: true });\n\n// Auto-start after 1 second (works in some browsers)\nsetTimeout(() => {\n  try {\n    alarmInterval = alarmInterval || setInterval(playAlarm, 3000);\n    playAlarm();\n    speakAlert();\n    setTimeout(speakAlert, 8000);\n  } catch(e) {}\n}, 1000);\n</script>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    ...ticket,\n    alarmHtml: htmlContent,\n    alarmGenerated: true\n  }\n}];"
+      },
+      "id": "3ca06068-d4fe-4cb2-992e-299d3e4b241e",
+      "name": "🔔 Generate Alarm Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "={{ '/home/node/.n8n-files/alarms/alarm_ticket_' + $json.ticketId + '.html' }}",
+        "dataPropertyName": "alarmHtml",
+        "options": {}
+      },
+      "id": "4003289a-f229-426f-9eba-80f4c2334daa",
+      "name": "💾 Save Alarm HTML File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ae609434-ed6a-4e13-bc3b-b58f32c13909",
+      "name": "🖥️ System Notification",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        224,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://YOUR_GLPI_URL/apirest.php/killSession",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('🔐 GLPI Init Session').item.json.session_token }}"
+            },
+            {
+              "name": "App-Token",
+              "value": "YOUR_GLPI_APP_TOKEN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "70038817-c04f-4391-81df-815df6c6cd0e",
+      "name": "🔒 GLPI Close Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        448,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log non-critical SLA tickets (4hr, 6hr)\nconst ticket = $input.first().json;\nconsole.log(`[SLA Monitor] Non-critical ticket #${ticket.ticketId} - SLA: ${ticket.matchedSLA?.timingLabel || 'Unknown'}`);\n\nconst workflowStaticData = $getWorkflowStaticData('global');\nif (!workflowStaticData.ticketLog) workflowStaticData.ticketLog = [];\n\nworkflowStaticData.ticketLog.push({\n  ticketId: ticket.ticketId,\n  sla: ticket.matchedSLA?.timingLabel,\n  name: ticket.ticketName,\n  time: new Date().toISOString()\n});\n\n// Keep last 200 logs\nworkflowStaticData.ticketLog = workflowStaticData.ticketLog.slice(-200);\n\nreturn [{ json: { logged: true, message: `Ticket #${ticket.ticketId} logged - ${ticket.matchedSLA?.timingLabel} SLA` } }];"
+      },
+      "id": "d7ea1643-511e-475f-bb3e-0d0c0b3f41db",
+      "name": "📝 Log Non-Critical Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No new tickets - silent pass\nconsole.log('[SLA Monitor] Poll complete - no new tickets');\nreturn [{ json: { status: 'no_new_tickets', timestamp: new Date().toISOString() } }];"
+      },
+      "id": "b529a722-2802-44c4-b397-2f6726e97b05",
+      "name": "😴 No New Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://YOUR_GLPI_URL/apirest.php/Ticket/={{ $('🎯 Match Ticket to SLA').item.json.ticketId }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "expand_dropdowns",
+              "value": "true"
+            },
+            {
+              "name": "with_logs",
+              "value": "true"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('🔐 GLPI Init Session').item.json.session_token }}"
+            },
+            {
+              "name": "App-Token",
+              "value": "YOUR_GLPI_APP_TOKEN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e99150a2-f5eb-4788-99eb-9d216f0e8872",
+      "name": "📋 GLPI Get Ticket Detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dashboard data aggregator\n// Reads ticket log and builds summary for monitoring dashboard\nconst workflowStaticData = $getWorkflowStaticData('global');\nconst log = workflowStaticData.ticketLog || [];\nconst slaMap = workflowStaticData.slaMap || [];\n\nconst summary = {\n  totalProcessed: log.length,\n  lastUpdated: new Date().toISOString(),\n  bySlaTier: {},\n  last10Tickets: log.slice(-10).reverse()\n};\n\nfor (const entry of log) {\n  const tier = entry.sla || 'Unknown';\n  summary.bySlaTier[tier] = (summary.bySlaTier[tier] || 0) + 1;\n}\n\nreturn [{ json: summary }];"
+      },
+      "id": "1b651b30-54dd-4017-a3a1-071e74c85d2d",
+      "name": "📊 Dashboard Aggregator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        400
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⏰ Poll Every 1 Minute": {
+      "main": [
+        [
+          {
+            "node": "📋 State Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 State Manager": {
+      "main": [
+        [
+          {
+            "node": "🔐 GLPI Init Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 GLPI Init Session": {
+      "main": [
+        [
+          {
+            "node": "📥 GLPI Fetch New Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 GLPI Fetch New Tickets": {
+      "main": [
+        [
+          {
+            "node": "🔍 Parse & Filter New Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Parse & Filter New Tickets": {
+      "main": [
+        [
+          {
+            "node": "✅ Has New Tickets?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Has New Tickets?": {
+      "main": [
+        [
+          {
+            "node": "📊 Read SLA Excel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "😴 No New Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Read SLA Excel": {
+      "main": [
+        [
+          {
+            "node": "🗺️ Build SLA Lookup Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗺️ Build SLA Lookup Map": {
+      "main": [
+        [
+          {
+            "node": "🎯 Match Ticket to SLA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎯 Match Ticket to SLA": {
+      "main": [
+        [
+          {
+            "node": "🚨 Is Critical SLA? (≤2hr)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚨 Is Critical SLA? (≤2hr)": {
+      "main": [
+        [
+          {
+            "node": "🔔 Generate Alarm Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📋 GLPI Get Ticket Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔔 Generate Alarm Page": {
+      "main": [
+        [
+          {
+            "node": "💾 Save Alarm HTML File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Save Alarm HTML File": {
+      "main": [
+        [
+          {
+            "node": "🔒 GLPI Close Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 GLPI Get Ticket Detail": {
+      "main": [
+        [
+          {
+            "node": "📝 Log Non-Critical Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Log Non-Critical Ticket": {
+      "main": [
+        [
+          {
+            "node": "🔒 GLPI Close Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔒 GLPI Close Session": {
+      "main": [
+        [
+          {
+            "node": "📊 Dashboard Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "60bec46c-34d9-4d50-96ce-321ed28d67b6",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "7HcwIqIDTIeONFyl",
+  "tags": []
+}

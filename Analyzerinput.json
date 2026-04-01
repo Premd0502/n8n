@@ -1,0 +1,381 @@
+{
+  "name": "Analyzerinput",
+  "nodes": [
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f293a9e7-f7d2-4baa-a2e2-ff5a59c08028",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "cd3ed65c-0e65-4fd3-9387-0e82147d4c21",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "eb45878d-d1be-4208-90b7-4fd9661ab236",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "allMatchingOutputs": false
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -416,
+        192
+      ],
+      "id": "61896a1a-6c99-4184-88bb-a60691450fb3",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Your task is to classify if a user is talking about hardware or software problems. \nJust analyze the input and create either \"Software\" or \"Hardware\" as the output"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        -880,
+        192
+      ],
+      "id": "4da6461b-cd88-4509-b9e1-707cb3844197",
+      "name": "Analyzerinput"
+    },
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1056,
+        192
+      ],
+      "id": "ddcaa308-a180-44d7-b277-28e8d559bd10",
+      "name": "ChatInput",
+      "webhookId": "def0f26e-bfda-42e8-a423-a7fdf648910f",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a96b743b-bdfb-45dd-acd3-a70fce5520c7",
+              "name": "ResponsetoChatInput",
+              "value": "={{ $json.Chatinput }}is classified a {{ $('Combinedata').item.json.output.category[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "88fc4eb6-d2fa-42c0-b7c0-7101d15aa79c",
+              "name": "",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "78e2df6c-fb0d-4992-a1c1-ca0e763d1559",
+      "name": "IsHardware"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1221320d-8e68-455c-b943-51f817a0cdda",
+              "name": "ResponsetoChatInput",
+              "value": "={{ $json.Chatinput }}is classified a{{ $('Combinedata').item.json.output.category[0] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -16,
+        208
+      ],
+      "id": "4fd9cae4-a8bc-475c-9752-a18951fb5674",
+      "name": "IsSoftware"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "635dc28d-bad1-4449-8faa-3ec352ec59d4",
+              "name": "",
+              "value": "={{ $json.Chatinput }}is classified a {{ $('Combinedata').item.json.Chatinput }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        16,
+        352
+      ],
+      "id": "7e062824-f5cf-4e59-ab7f-aa08229e1aa4",
+      "name": "isUnrelated"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        416
+      ],
+      "id": "ae7284d8-4c04-4dbf-8a5c-1222a19f6a8c",
+      "name": "Mistral Cloud Chat Model"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -800,
+        384
+      ],
+      "id": "11e585eb-fa18-49dd-a8a3-c0971efde6a0",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "This issue is not related to IT hardware or software.",
+        "options": {}
+      },
+      "id": "99b5ce5e-4e83-4035-b292-b8cf98820614",
+      "name": "Unrelated Issue Message",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        16,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ab2d447f-b635-4a0c-a7ec-fbb03063c0e6",
+              "name": "output.category[0]",
+              "value": "={{ $json.output.state }}",
+              "type": "string"
+            },
+            {
+              "id": "d6b121ef-2d60-479f-99b0-b378e179906b",
+              "name": "Chatinput",
+              "value": "={{ $('ChatInput').item.json.chatInput }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -592,
+        192
+      ],
+      "id": "0989fc12-fd36-4acb-84ed-a25959c08aec",
+      "name": "Combinedata"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        512
+      ],
+      "id": "a415adb1-13dc-4169-be67-f0d853ad75f9",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Analyzerinput": {
+      "main": [
+        [
+          {
+            "node": "Combinedata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChatInput": {
+      "main": [
+        [
+          {
+            "node": "Analyzerinput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyzerinput",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Analyzerinput",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "IsHardware",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IsSoftware",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "isUnrelated",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Unrelated Issue Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinedata": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4de5403c-ac74-40bc-990e-f57c68d729c7",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "n3WYpgpsdGiJ1I3H",
+  "tags": []
+}

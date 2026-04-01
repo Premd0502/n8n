@@ -1,0 +1,233 @@
+{
+  "name": "Graylog Critical & Warning Analyzer (Fixed + Email)",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 9
+            },
+            {}
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        144
+      ],
+      "id": "620fac3e-4289-4b0f-8350-fd100af807e5"
+    },
+    {
+      "parameters": {
+        "url": "http://172.16.16.110:9000/api/search/universal/relative",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Basic YWRtaW46cmVkaGF0QDkq"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Requested-By",
+              "value": "n8n"
+            }
+          ]
+        },
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "value": "*"
+            },
+            {
+              "name": "range",
+              "value": "7200"
+            }
+          ]
+        }
+      },
+      "name": "Fetch Graylog Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        64
+      ],
+      "id": "315c1ae9-1f6f-4dc8-aa8f-8e0331116eb5"
+    },
+    {
+      "parameters": {
+        "functionCode": "const messages = $json.messages || [];\n\nreturn messages\n  .map(m => {\n    const msg = m.message;\n    const level = msg.level || 0;\n    const severity = level >= 4 ? 'CRITICAL' : (level === 3 ? 'WARNING' : null);\n\n    if (!severity) return null;\n\n    return {\n      json: {\n        timestamp: msg.timestamp,\n        host: msg.source || 'unknown',\n        level,\n        severity,\n        message: msg.message\n      }\n    };\n  })\n  .filter(Boolean);"
+      },
+      "name": "Parse & Filter Severity",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        128,
+        272
+      ],
+      "id": "8db6bc48-be0a-40e7-9d3f-d0a68143a753"
+    },
+    {
+      "parameters": {
+        "functionCode": "const grouped = {};\n\nitems.forEach(i => {\n  const key = `${i.json.host}-${i.json.severity}`;\n  if (!grouped[key]) {\n    grouped[key] = {\n      host: i.json.host,\n      severity: i.json.severity,\n      count: 0,\n      messages: []\n    };\n  }\n  grouped[key].count++;\n  grouped[key].messages.push(i.json.message);\n});\n\nreturn Object.values(grouped).map(i => ({ json: i }));"
+      },
+      "name": "Aggregate Logs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        304,
+        80
+      ],
+      "id": "6e136564-b764-4271-af3f-4154b94cc15e"
+    },
+    {
+      "parameters": {
+        "functionCode": "let html = `<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n<tr style=\"background:#f2f2f2\">\n<th>Host</th>\n<th>Severity</th>\n<th>Count</th>\n<th>Sample Messages</th>\n</tr>`;\n\nitems.forEach(i => {\n  html += `<tr>\n<td>${i.json.host}</td>\n<td style=\"color:${i.json.severity === 'CRITICAL' ? 'red' : 'orange'}\">${i.json.severity}</td>\n<td>${i.json.count}</td>\n<td>${i.json.messages.slice(0,5).join('<br>')}</td>\n</tr>`;\n});\n\nhtml += `</table>`;\n\nreturn [{ json: { html } }];"
+      },
+      "name": "Generate HTML Table",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        496,
+        288
+      ],
+      "id": "c915b51b-6508-4309-a783-95b967080bd8"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    graphBody: {\n      message: {\n        subject: 'Graylog Critical & Warning Report',\n        body: {\n          contentType: 'HTML',\n          content: `\n            <p>Dear Systems Team,</p>\n            <p>Please find below the Graylog Critical & Warning summary:</p>\n            ${$json.html}\n            <p>Regards,<br>IT-Team (Ninestars Information Techonologies Pvt Ltd)</p>\n          `\n        },\n        toRecipients: [\n          {\n            emailAddress: {\n              address: 'systems@ninestars.in'\n            }\n          }\n        ]\n      },\n      saveToSentItems: true\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        80
+      ],
+      "id": "6ce6ceb3-98c5-4a4a-ba33-a1a740fddb5d",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={{ JSON.stringify($json.graphBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        976,
+        144
+      ],
+      "id": "675bef3d-6d45-4afb-9aa8-aad13305f062",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Graylog Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Graylog Logs": {
+      "main": [
+        [
+          {
+            "node": "Parse & Filter Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Filter Severity": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Logs": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Table": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "12dd3a56-9c10-42d8-a821-53781ddac29c",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "K6VhFn23p2FdNGqR",
+  "tags": []
+}

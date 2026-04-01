@@ -1,0 +1,486 @@
+{
+  "name": "ISO 27001-2002 ISMS Document Audit and Compliance Assessment",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "ISO 27001-2022 Document Audit Submission",
+        "formDescription": "Submit documents and evidence for ISO 27001-2022 compliance audit. Provide document paths and metadata for AI-powered analysis.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "=BCP",
+              "fieldType": "dropdown",
+              "fieldName": "BCP-Policy",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "/home/node/.n8n-files//Business-Continuity-Plan-IS1506.pdf"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Business-Continuity-Plan",
+              "fieldType": "dropdown",
+              "fieldName": "Evidence ",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "/home/node/.n8n-files/BCP-Evidences.pdf"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "4a84ff40-a6be-4c29-bf8c-60cd0eaa8e3a",
+      "name": "Submit Documents for Audit",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "80fad944-0515-4b40-9528-c477bb5004d4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json['BCP-Policy'] }}{{ $json['Evidence '] }}",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "You are an expert ISO/IEC 27001:2022 auditor with deep knowledge of information security management systems. Your role is to:\n\n1. ANALYZE documents against ISO 27001:2022 requirements and Annex A controls\n2. IDENTIFY findings (non-conformities, observations, opportunities for improvement)\n3. ASSESS compliance level and assign ratings (1-5 scale: 1=Critical Non-Compliance, 2=Major Non-Compliance, 3=Minor Non-Compliance, 4=Compliant with Observations, 5=Fully Compliant)\n4. PROVIDE actionable solutions and recommendations for each finding\n5. EVALUATE evidence adequacy and control effectiveness\n\nFor each document, provide:\n- Overall compliance rating (1-5)\n- Specific findings with severity levels\n- Root cause analysis\n- Corrective action recommendations\n- Timeline suggestions for remediation\n- References to specific ISO 27001:2022 clauses\n\nBe thorough, objective, and constructive in your audit approach."
+        }
+      },
+      "id": "50bc5f59-e3c9-4dfc-8455-faedfc195cea",
+      "name": "ISO 27001 Audit Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        192,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n \"type\": \"object\",\n \"properties\": {\n   \"documentName\": { \"type\": \"string\" },\n   \"documentType\": { \"type\": \"string\" },\n   \"overallRating\": { \"type\": \"number\" },\n   \"complianceStatus\": { \"type\": \"string\" },\n   \"nonConformities\": { \"type\": \"string\" },\n   \"riskLevel\": { \"type\": \"string\" },\n   \"recommendations\": { \"type\": \"string\" }\n }\n}",
+        "autoFix": true
+      },
+      "id": "910778b3-5d2d-478b-970b-bd4c7cb66b26",
+      "name": "Audit Report Structure",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        448,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "auditDate",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "documentName",
+              "value": "={{ $('Submit Documents for Audit').item.json.documentName }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "documentType",
+              "value": "={{ $('Submit Documents for Audit').item.json.documentType }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "documentPath",
+              "value": "={{ $('Submit Documents for Audit').item.json.documentPath }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "overallRating",
+              "value": "={{ $json.overallRating }}",
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "complianceStatus",
+              "value": "={{ $json.complianceStatus }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "findingsCount",
+              "value": "={{ $json.findings.length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-8",
+              "name": "criticalFindings",
+              "value": "={{ $json.findings.filter(f => f.severity === 'Critical').length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-9",
+              "name": "majorFindings",
+              "value": "={{ $json.findings.filter(f => f.severity === 'Major').length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-10",
+              "name": "minorFindings",
+              "value": "={{ $json.findings.filter(f => f.severity === 'Minor').length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-11",
+              "name": "auditSummary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "id-12",
+              "name": "fullReport",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f6751038-34e4-4149-a639-5f14522f5309",
+      "name": "Prepare Audit Record",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        592,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__iso27001_audit_results__>"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "082a2775-770d-4704-af70-6845b30cfc72",
+      "name": "Store Audit Results",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        816,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "reportTitle",
+              "value": "ISO 27001:2022 Audit Report",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "documentName",
+              "value": "={{ $('Submit Documents for Audit').item.json.documentName }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "documentType",
+              "value": "={{ $('Submit Documents for Audit').item.json.documentType }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "storagePath",
+              "value": "={{ $('Submit Documents for Audit').item.json.documentPath }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "auditDate",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "overallRating",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.overallRating }}/5",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "complianceStatus",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.complianceStatus }}",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "executiveSummary",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "id-9",
+              "name": "findings",
+              "value": "={{ JSON.stringify($('ISO 27001 Audit Agent').item.json.output.findings) }}",
+              "type": "array"
+            },
+            {
+              "id": "id-10",
+              "name": "strengths",
+              "value": "={{ JSON.stringify($('ISO 27001 Audit Agent').item.json.output.strengths || []) }}",
+              "type": "array"
+            },
+            {
+              "id": "id-11",
+              "name": "totalFindings",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.findings.length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-12",
+              "name": "criticalCount",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.findings.filter(f => f.severity === 'Critical').length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-13",
+              "name": "majorCount",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.findings.filter(f => f.severity === 'Major').length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-14",
+              "name": "minorCount",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.findings.filter(f => f.severity === 'Minor').length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-15",
+              "name": "observationCount",
+              "value": "={{ $('ISO 27001 Audit Agent').item.json.output.findings.filter(f => f.severity === 'Observation').length }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "96fbf41f-dda0-4b3d-bb39-5725290847b4",
+      "name": "Format Final Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryMongoDbChat",
+      "typeVersion": 1,
+      "position": [
+        304,
+        240
+      ],
+      "id": "868b4096-79d9-497f-832f-028164f18c32",
+      "name": "MongoDB Chat Memory",
+      "credentials": {
+        "mongoDb": {
+          "id": "W4JAaGS8VLcI0cSO",
+          "name": "MongoDB account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        256
+      ],
+      "id": "646788b3-f077-4474-a9fd-cb11912ddfa7",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "mb53UXL7zWbbBCzP",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        496,
+        368
+      ],
+      "id": "d00066c9-3a9b-466d-9682-1c59f4bb21fa",
+      "name": "Mistral Cloud Chat Model",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "TSxB1C3Uzl242rIM",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        48,
+        256
+      ],
+      "id": "71ad69e1-ccca-4afd-8c88-6999c548f1e6",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "IHkk9HTyR0fBDjhL",
+          "name": "Groq account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Submit Documents for Audit": {
+      "main": [
+        [
+          {
+            "node": "ISO 27001 Audit Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Report Structure": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "ISO 27001 Audit Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ISO 27001 Audit Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepare Audit Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Audit Record": {
+      "main": [
+        [
+          {
+            "node": "Store Audit Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Audit Results": {
+      "main": [
+        [
+          {
+            "node": "Format Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MongoDB Chat Memory": {
+      "ai_memory": [
+        []
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ISO 27001 Audit Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Audit Report Structure",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ISO 27001 Audit Agent",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "01bbd490-d166-48fd-8302-8c5aee0c0025",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "hx3ZGuYMaTVPBKQy",
+  "tags": []
+}
