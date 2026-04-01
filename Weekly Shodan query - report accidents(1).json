@@ -1,0 +1,398 @@
+{
+  "name": "Weekly Shodan query - report accidents",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "=https://api.shodan.io/shodan/host/{{ $json.ip }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "id": "2bca6445-ae78-4d08-9f56-d25bb0234d24",
+      "name": "Scan each IP",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1184,
+        624
+      ],
+      "typeVersion": 4.1,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "35CHCYTs1798xk5Z",
+          "name": "Query Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://internal.users.n8n.cloud/webhook/mock-shodan-ips",
+        "options": {}
+      },
+      "id": "cf40ee54-368d-49a2-b480-f84ff6647071",
+      "name": "Get watched IPs & Ports",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        512,
+        624
+      ],
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "id": "02a7a6a1-9885-4d17-8382-b0901f5c267c",
+      "name": "Split out services",
+      "type": "n8n-nodes-base.itemLists",
+      "position": [
+        1392,
+        624
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $('For each IP').item.json.ports.includes($json.port) }}"
+            }
+          ]
+        }
+      },
+      "id": "1e6a0d58-f6a8-4667-8156-d512aea8ef7c",
+      "name": "Unexpected port?",
+      "type": "n8n-nodes-base.filter",
+      "position": [
+        1600,
+        624
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "ip",
+              "value": "={{ $('Get watched IPs & Ports').item.json.ip }}"
+            },
+            {
+              "name": "hostnames",
+              "value": "={{ $json.hostnames.join(', ') }}"
+            },
+            {
+              "name": "port",
+              "value": "={{ $json.port }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.description }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ $json.data }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "55768ab3-3ccd-4ce6-9120-ad79bec80bc9",
+      "name": "Set data to post for each port",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        1824,
+        624
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "convertToHtmlTable",
+        "options": {}
+      },
+      "id": "b539167c-cd00-4c52-8e55-25373f4497b1",
+      "name": "Convert to table",
+      "type": "n8n-nodes-base.html",
+      "position": [
+        2048,
+        624
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "html": "={{ $json.table }}",
+        "destinationKey": "markdown",
+        "options": {}
+      },
+      "id": "91922d79-eb29-4efd-9b5c-10084fc27638",
+      "name": "Convert to Markdown",
+      "type": "n8n-nodes-base.markdown",
+      "position": [
+        2272,
+        624
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "4e3a1d7c-03d0-454d-8b37-554dd526e893",
+      "name": "For each IP",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        800,
+        624
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "content": "![Shodan](https://i.imgur.com/tK0RXSK.png)\n## Format port service data as a Markdown table\nAfter identifying the open ports, the next step is to organize this information neatly. This node converts the data gathered from the previous steps into a `Markdown table format`. \n\nIt's crucial for readability and makes it easier to parse through the port and service information. This formatted data can then be seamlessly integrated into documentation or reports, ensuring that the information is accessible and understandable for further analysis or sharing with team members.",
+        "height": 564.6974012965735,
+        "width": 607.8070576425011
+      },
+      "id": "26d27e9b-c352-4c11-8933-08af9a1c0833",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1792,
+        288
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "![Shodan](https://i.imgur.com/q4G3kQf.png)\n## Query Shodan for unexpected open ports\nThis stage of the workflow leverages `Shodan`, a search engine for internet-connected devices, to identify running services on each IP port.\n\nOnce the services and ports are returned, the `split out services` node extracts all the services to be filtered at once. \n\nIf an unexpected port is found, it allows the service to pass the service through the filter node.",
+        "height": 562.5474916374191,
+        "width": 606.297701841459
+      },
+      "id": "f44cbba1-e0e4-49fe-b647-029470df845b",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1152,
+        288
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "![Scheduled](https://i.imgur.com/PcOuvAL.png)\n# Workflow Overview\n\nThe n8n workflow initiates with a node that fetches a list of IP addresses and their specified ports from a security system, which is essential for ongoing surveillance of network integrity. \n\nThe data is expected to be in JSON format, detailing each IP with an array of associated ports to be monitored. While the example provided showcases a basic API call, in practice, this should be replaced with a call to the organization's own security system. \n\n`It's important to note that error handling is not included in this example and should be implemented according to the specific data formatting and error response protocols of the user's system.` The expectation for successful execution is that the incoming data conforms to the predefined JSON structure.\n\n## Get list of IPs from your IPS or database\n\nThis section retrieves a current list of IP addresses and their associated ports that require monitoring from your Intrusion Prevention System (IPS). It is essential to maintain an updated list to monitor for any unauthorized changes or traffic. The expected format for each entry is a JSON object containing the IP address and an array of ports.\n\nOur sample api call below can be replaced with api access to your IPS. To ensure it works, this workflow expects data to be in the following format:\n```\n[\n  {\n    \"ip\": \"172.16.16.36\",\n    \"ports\": [\n      5678,\n      80\n    ]\n  },\n  {\n    \"ip\": \"172.16.16.56\",\n    \"ports\": [\n      8080,\n      80\n    ]\n  }\n]\n```",
+        "height": 890.9735108226744,
+        "width": 650.8045775723033
+      },
+      "id": "a637a852-9ffd-4f19-99a8-5c28cc61f893",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "![thehive](https://i.imgur.com/y2Yw1ZP.png)\n## Post to TheHive\nThe final step in the process involves posting the findings to TheHive - a scalable, open-source and free Security Incident Response Platform. \n\nIf the workflow has identified an unexpected open port, it creates an alert in TheHive. This integration ensures that any potential security issues are escalated appropriately, and the relevant teams can begin the incident response process immediately, leveraging TheHive's powerful case management capabilities.",
+        "height": 594.7981050471616,
+        "width": 438.8550109331452
+      },
+      "id": "9fe1b90e-cfd9-48c6-8f66-8f2938252ebf",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2432,
+        256
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 5
+            }
+          ]
+        }
+      },
+      "id": "82f4cfca-57a6-4340-9573-4ee25845129f",
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        288,
+        624
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "title": "=Unexpected ports for {{ $('For each IP').last().json.ip }}",
+        "description": "=Unexpected open ports:\n\n{{ $json.markdown }}",
+        "date": "={{$now}}",
+        "tags": "={{ $('For each IP').last().json.ip }}",
+        "type": "Unexpected open port",
+        "source": "n8n",
+        "sourceRef": "={{ $('For each IP').last().json.ip }}:{{$now.toUnixInteger()}}",
+        "additionalFields": {}
+      },
+      "id": "d8e6b8b7-36ab-4a14-a4dc-4a17f07c0abb",
+      "name": "Create TheHive alert",
+      "type": "n8n-nodes-base.theHive",
+      "position": [
+        2480,
+        624
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "![n8n](https://i.imgur.com/lKnBNnH.png)\n## Iterate Through IP addresses\nThe \"`Split In Batches`\" node is configured with a batch size of one, ensuring that the array of IP addresses received is processed one at a time. \n\nThis approach allows for a focused analysis of each detection, ensuring no detail is overlooked. \n\nFollowing this, the \"`Split out services`\" node further along dissects each service to extract and separately handle the array of behaviors associated with them. \n\nBy processing these elements one by one, we effectively manage the workflow's load, maintaining optimal performance and adherence to external APIs' rate limits, crucial for the seamless operation of our security protocols.\n\n",
+        "height": 690.0398460499007,
+        "width": 432.3140705656865
+      },
+      "id": "1b0bad45-11e2-4e0f-857d-d2b0b5738a49",
+      "name": "Sticky Note5",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        688,
+        160
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "For each IP": {
+      "main": [
+        [
+          {
+            "node": "Scan each IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Get watched IPs & Ports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan each IP": {
+      "main": [
+        [
+          {
+            "node": "Split out services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to table": {
+      "main": [
+        [
+          {
+            "node": "Convert to Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unexpected port?": {
+      "main": [
+        [
+          {
+            "node": "Set data to post for each port",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split out services": {
+      "main": [
+        [
+          {
+            "node": "Unexpected port?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to Markdown": {
+      "main": [
+        [
+          {
+            "node": "Create TheHive alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create TheHive alert": {
+      "main": [
+        [
+          {
+            "node": "For each IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get watched IPs & Ports": {
+      "main": [
+        [
+          {
+            "node": "For each IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set data to post for each port": {
+      "main": [
+        [
+          {
+            "node": "Convert to table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "608e5699-8b2f-404b-bdce-948dc5b9fa7a",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "RERDH3Epjb6uu7VB",
+  "tags": []
+}

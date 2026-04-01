@@ -1,0 +1,173 @@
+{
+  "name": "Nagios High CPU Alert Incident Management",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Nagios",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryBinary",
+        "options": {}
+      },
+      "id": "58c9a000-890f-4634-a3d5-937eef759db8",
+      "name": "Receive Nagios Alert",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -672,
+        96
+      ],
+      "webhookId": "8977f059-704a-4c87-bcd5-4ab1b6cdd430"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "subject",
+              "value": "=High CPU Alert - {{ $json.body.hostname || \"Unknown Host\" }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "description",
+              "value": "=Nagios detected high CPU usage on {{ $json.body.hostname || \"server\" }}. CPU: {{ $json.body.cpu_usage || \"N/A\" }}%",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "priority",
+              "value": "high",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "timestamp",
+              "value": "={{ $now }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "37760aa4-b3b9-4ed6-b504-522c425db78c",
+      "name": "Prepare Ticket Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -448,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://172.16.16.107/nagios/",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"title\": $json.subject, \"description\": $json.description, \"priority\": $json.priority, \"timestamp\": $json.timestamp }",
+        "options": {}
+      },
+      "id": "d61ec5ed-8102-4321-b0da-da50a7441989",
+      "name": "Create Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__slack_channel_id__>"
+        },
+        "text": "=🚨 *High CPU Alert*\n\n*Subject:* {{ $('Prepare Ticket Data').item.json.subject }}\n*Description:* {{ $('Prepare Ticket Data').item.json.description }}\n*Ticket Created:* {{ $('Create Ticket').item.json.ticket_id || \"Success\" }}\n*Time:* {{ $now.toLocaleString() }}",
+        "otherOptions": {}
+      },
+      "id": "5f1b6cb9-ecf3-45b4-af13-8469995edcd3",
+      "name": "Notify Admin via Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        0,
+        192
+      ],
+      "webhookId": "53a4f7a8-0fe8-4230-87de-90618390fe99"
+    },
+    {
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__admin_email__>",
+        "subject": "=🚨 High CPU Alert - {{ $('Prepare Ticket Data').item.json.subject }}",
+        "message": "=<h2>High CPU Alert Detected</h2>\n<p><strong>Description:</strong> {{ $('Prepare Ticket Data').item.json.description }}</p>\n<p><strong>Priority:</strong> {{ $('Prepare Ticket Data').item.json.priority }}</p>\n<p><strong>Ticket ID:</strong> {{ $('Create Ticket').item.json.ticket_id || \"Created\" }}</p>\n<p><strong>Timestamp:</strong> {{ $('Prepare Ticket Data').item.json.timestamp }}</p>\n<hr>\n<p>This is an automated alert from your Nagios monitoring system.</p>",
+        "options": {}
+      },
+      "id": "bba5c11e-9f1f-4234-b3cd-19e3ba12fd00",
+      "name": "Notify Admin via Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "b5e48ecc-523c-4330-8bc2-917c719b493c"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Nagios Alert": {
+      "main": [
+        [
+          {
+            "node": "Prepare Ticket Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Ticket Data": {
+      "main": [
+        [
+          {
+            "node": "Create Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Ticket": {
+      "main": [
+        [
+          {
+            "node": "Notify Admin via Slack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Admin via Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0853bfd9-0898-4003-b796-35ae087b1d03",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "i5z4ALnXMsbunEla",
+  "tags": []
+}
