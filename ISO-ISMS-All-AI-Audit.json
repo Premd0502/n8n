@@ -1,0 +1,357 @@
+{
+  "name": "ISO-ISMS-All-AI-Audit",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7a23979b-e824-454e-b16f-93db46e028b5",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "standard",
+              "value": "ISO27001"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1c35355a-a74e-4304-bacb-86e24dc6e3bd",
+      "name": "Set Audit Standard",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/home/node/.n8n-files/policy.pdf"
+      },
+      "id": "b3b0b90d-bd5f-483c-ac9b-0a85523c69e5",
+      "name": "Read Policy PDF",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "0c804679-4a78-4de8-86f2-19d71826f2e9",
+      "name": "Extract Policy Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/home/node/.n8n-files/evidence.pdf"
+      },
+      "id": "ec036947-c112-4d4e-9b83-0621d5613f3c",
+      "name": "Read Evidence PDF",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        0,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "89a378b3-504b-4b39-bc1c-5159cdd01172",
+      "name": "Extract Evidence Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        208,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": {
+          "values": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "48cbdc76-be25-4151-a430-7d211e91c64e",
+      "name": "Merge Documents",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        400,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const standard = $json.standard;\n\nlet prompt = '';\n\nif (standard === 'ISO27001') {\n  prompt = 'You are an ISO 27001:2022 ISMS auditor. Map to Annex A controls.';\n} else if (standard === 'ISO27701') {\n  prompt = 'You are an ISO 27701 Privacy Information Management auditor.';\n} else if (standard === 'ISO27017') {\n  prompt = 'You are an ISO 27017 Cloud Security auditor.';\n} else if (standard === 'ISO42001') {\n  prompt = 'You are an ISO 42001 AI Management System auditor.';\n} else if (standard === 'ISO23894') {\n  prompt = 'You are an ISO 23894 AI Risk Management auditor.';\n} else if (standard === 'SOC2') {\n  prompt = 'You are a SOC 2 Type II auditor (Security, Availability, Confidentiality).';\n}\n\nreturn [{ prompt }];"
+      },
+      "id": "7945ef72-c5ed-4642-8feb-a604f725f718",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        608,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Authorization\": \"Bearer YOUR_API_KEY\", \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'llama-3.3-70b-versatile', messages: [ { role: 'system', content: $json.prompt }, { role: 'user', content: $json.text } ], temperature: 0.2 } }}",
+        "options": {}
+      },
+      "id": "0bb9da76-3100-48ab-8563-76ce6e1baaa6",
+      "name": "AI Auditor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        800,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ html: `<h1>Audit Report</h1><pre>${$json.choices[0].message.content}</pre>` }];"
+      },
+      "id": "efe54a09-ffee-466b-b45e-41e36ae7b4ca",
+      "name": "Format HTML",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "html_content": "={{$json.html}}"
+      },
+      "id": "1b1053f5-87cf-4c12-bd78-53a1c56dffef",
+      "name": "Convert HTML to PDF",
+      "type": "n8n-nodes-htmlcsstopdf.htmlcsstopdf",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        112
+      ],
+      "credentials": {
+        "htmlcsstopdfApi": {
+          "id": "sh4BrNiTTvNX8Ckw",
+          "name": "HTML to PDF account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$json.pdf_url}}",
+        "options": {}
+      },
+      "id": "a9d53026-6298-40ff-9f3d-65872a371279",
+      "name": "Download PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1408,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "/home/node/.n8n-files/Final_Audit_Report.pdf",
+        "options": {}
+      },
+      "id": "618bf845-ffe4-4a64-92eb-36c6b563cbb4",
+      "name": "Save PDF",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        112
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Audit Standard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Audit Standard": {
+      "main": [
+        [
+          {
+            "node": "Read Policy PDF",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Evidence PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Policy PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract Policy Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Policy Text": {
+      "main": [
+        [
+          {
+            "node": "Merge Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Evidence PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract Evidence Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Evidence Text": {
+      "main": [
+        [
+          {
+            "node": "Merge Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Documents": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Auditor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Auditor": {
+      "main": [
+        [
+          {
+            "node": "Format HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format HTML": {
+      "main": [
+        [
+          {
+            "node": "Convert HTML to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert HTML to PDF": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Save PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "de200f06-cb9c-4bd1-b016-0824fd1bfebe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "JXt46Sm7d7YB5U09",
+  "tags": []
+}

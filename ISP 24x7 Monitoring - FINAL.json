@@ -1,0 +1,294 @@
+{
+  "name": "ISP 24x7 Monitoring - FINAL",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 1,
+              "unit": "minutes"
+            }
+          ]
+        }
+      },
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1024,
+        112
+      ],
+      "id": "1a1b7e62-d065-4d71-9df7-9c81fb4aab41"
+    },
+    {
+      "parameters": {
+        "functionCode": "return [\n  { json: { name: 'Airtel', host: '122.183.243.41', ispEmail: 'support@airtel.com' } },\n  { json: { name: 'ACT', host: '49.207.186.229', ispEmail: 'support@act.com' } },\n  { json: { name: 'Reliance', host: '220.227.196.162', ispEmail: 'support@reliance.com' } },\n  { json: { name: 'Tikona', host: '113.193.128.201', ispEmail: 'support@tikona.com' } }\n];"
+      },
+      "name": "Define ISPs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -816,
+        112
+      ],
+      "id": "2f66d09d-4535-49f4-b5d4-bc4bea85aa20"
+    },
+    {
+      "parameters": {},
+      "name": "Ping Check",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        320
+      ],
+      "id": "af0c5600-4b40-4bdb-8679-e3e2ca307241"
+    },
+    {
+      "parameters": {
+        "functionCode": "const staticData = getWorkflowStaticData('global');\nconst isp = $json.name;\n\nlet status = 'UP';\n\nif ($node[\"Ping Check\"].json.stderr) {\n  status = 'DOWN';\n}\n\nconst previous = staticData[isp] || 'UNKNOWN';\nstaticData[isp] = status;\n\nreturn [{\n  json: {\n    name: isp,\n    host: $json.host,\n    status,\n    previousStatus: previous,\n    ispEmail: $json.ispEmail\n  }\n}];"
+      },
+      "name": "Compare Status",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        112
+      ],
+      "id": "1dd795d0-99d9-4b68-a919-246bc9d6ef9d"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "operation": "notEqual",
+              "value2": "={{$json.previousStatus}}"
+            }
+          ]
+        }
+      },
+      "name": "Status Changed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        112
+      ],
+      "id": "533eac6e-bc3d-4834-9018-7fc4b822214c"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "value2": "DOWN"
+            }
+          ]
+        }
+      },
+      "name": "Is DOWN?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        112
+      ],
+      "id": "f67d65f9-9782-4243-9a7f-0dd57b5277a5"
+    },
+    {
+      "parameters": {},
+      "name": "Deep Analysis",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        192,
+        16
+      ],
+      "id": "f6d20df8-7eed-4dbc-88b1-38e90b8750e1"
+    },
+    {
+      "parameters": {
+        "toEmail": "systems@ninestars.in, prem.d@ninestars.in",
+        "subject": "🚨 {{$json.name}} ISP DOWN",
+        "text": "ISP {{$json.name}} is DOWN.\n\nHost: {{$json.host}}\n\nCheck immediately.",
+        "options": {}
+      },
+      "name": "Internal Email DOWN",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        384,
+        96
+      ],
+      "id": "c5d33015-a2d6-4eb6-bc73-56ea389237e5",
+      "webhookId": "f8c16c53-2567-40f0-b61b-33f0c10bf09f"
+    },
+    {
+      "parameters": {
+        "toEmail": "={{$json.ispEmail}}",
+        "subject": "URGENT: {{$json.name}} ISP DOWN",
+        "text": "Dear ISP Team,\n\nOur {{$json.name}} link is DOWN.\n\nHost: {{$json.host}}\n\nPlease resolve ASAP.\n\nRegards,\nNinestars IT Team",
+        "options": {}
+      },
+      "name": "Email ISP DOWN",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -48
+      ],
+      "id": "3303ee64-dd24-46c6-9a03-08d17c7c8933",
+      "webhookId": "efc7a61f-f6d8-41a5-a175-795c861f376a"
+    },
+    {
+      "parameters": {
+        "toEmail": "systems@ninestars.in, prem.d@ninestars.in",
+        "subject": "✅ {{$json.name}} ISP UP",
+        "text": "Good News:\n\n{{$json.name}} ISP is UP now.\n\nHost: {{$json.host}}",
+        "options": {}
+      },
+      "name": "Internal Email UP",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        384,
+        256
+      ],
+      "id": "f506c38d-a355-4fde-baad-795535c0b3d1",
+      "webhookId": "4c97abdd-73f4-49b8-a828-78d6bd8fec0c"
+    },
+    {
+      "parameters": {
+        "toEmail": "={{$json.ispEmail}}",
+        "subject": "RESOLVED: {{$json.name}} ISP UP",
+        "text": "Dear ISP Team,\n\nThe {{$json.name}} link is now UP.\n\nThanks.\n\nRegards,\nNinestars IT Team",
+        "options": {}
+      },
+      "name": "Email ISP UP",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        384,
+        352
+      ],
+      "id": "7d68614b-5591-4018-9243-cd40a6bd481f",
+      "webhookId": "686e6fd3-42b9-4f6a-ab34-9a555f46546b"
+    },
+    {
+      "parameters": {
+        "command": "ping 122.183.243.41"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        112
+      ],
+      "id": "aa0b02b2-37b7-4dc7-85aa-e430ac4bbf63",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPassword": {
+          "id": "OMBZ5oNr0L7dliy8",
+          "name": "SSH Password account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Define ISPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Status": {
+      "main": [
+        [
+          {
+            "node": "Status Changed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Changed?": {
+      "main": [
+        [
+          {
+            "node": "Is DOWN?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is DOWN?": {
+      "main": [
+        [
+          {
+            "node": "Internal Email DOWN",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email ISP DOWN",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Internal Email UP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email ISP UP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define ISPs": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3eea8cc0-8566-4f22-b2e0-075f31e2ef85",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "FnX0hsGyOOTAr8zQ",
+  "tags": []
+}

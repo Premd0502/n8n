@@ -1,0 +1,212 @@
+{
+  "name": "Payment Due Reminder Automation (Graph FINAL FIXED-Live",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 9
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        0
+      ],
+      "id": "673a580f-8ee2-45e8-ab8b-1e0899bcf9ea"
+    },
+    {
+      "parameters": {
+        "filePath": "/home/node/.n8n-files/payment_due6.xlsx"
+      },
+      "name": "Read Excel File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        176,
+        0
+      ],
+      "id": "c369b67f-168f-4036-8a66-5fb0b921595d"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Excel to JSON",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [
+        336,
+        0
+      ],
+      "id": "c6925f36-d651-4bf5-b36f-8c4ae4f3ce33"
+    },
+    {
+      "parameters": {
+        "functionCode": "function excelDateToJSDate(serial) {\n  return new Date((serial - 25569) * 86400 * 1000);\n}\n\nconst today = new Date();\ntoday.setHours(0,0,0,0);\n\nreturn items.map(item => {\n  const dueDateJS = excelDateToJSDate(item.json.DueDate);\n  dueDateJS.setHours(0,0,0,0);\n  const diff = Math.ceil((dueDateJS - today) / (1000 * 60 * 60 * 24));\n\n  return {\n    json: {\n      ...item.json,\n      daysRemaining: diff\n    }\n  };\n});"
+      },
+      "name": "Calculate Days Remaining",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        528,
+        0
+      ],
+      "id": "e3e863b6-d37d-43b9-be42-a33561de8cf2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.daysRemaining}}",
+              "operation": "largerEqual",
+              "value2": 1
+            },
+            {
+              "value1": "={{$json.daysRemaining}}",
+              "operation": "smallerEqual",
+              "value2": 5
+            }
+          ]
+        }
+      },
+      "name": "Filter 5 to 1 Days",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        720,
+        16
+      ],
+      "id": "4da1f4a5-f2a8-4092-accc-b8ac666e2865"
+    },
+    {
+      "parameters": {
+        "functionCode": "let html = `\n<h3>Upcoming Payment Due Alerts</h3>\n<table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse;font-family:Arial;width:100%\">\n<tr style=\"background:#f2f2f2\">\n<th>###</th>\n<th>Location</th>\n<th>Division</th>\n<th>Description</th>\n<th>ISP</th>\n<th>Mbps</th>\n<th>Circuit ID</th>\n<th>Network Type</th>\n<th>Rate</th>\n<th>Tax +18%</th>\n<th>Total</th>\n<th>Total Per Annum</th>\n<th>DueDate</th>\n<th>Payment Cycle</th>\n<th>Days Remaining</th>\n<th>New Circuit ID</th>\n</tr>`;\n\nitems.forEach(i => {\n  html += `<tr>\n<td>${i.json[\"###\"] || 'N/A'}</td>\n<td>${i.json[\"Location\"] || 'N/A'}</td>\n<td>${i.json[\"Division\"] || 'N/A'}</td>\n<td>${i.json[\"Descripton\"] || 'N/A'}</td>\n<td>${i.json[\"ISP\"] || 'N/A'}</td>\n<td>${i.json[\"Mbps\"] || 'N/A'}</td>\n<td>${i.json[\"Circui ID\"] || 'N/A'}</td>\n<td>${i.json[\"Network Type\"] || 'N/A'}</td>\n<td>${i.json[\"Rate\"] || 0}</td>\n<td>${i.json[\"Tax +18%\"] || 0}</td>\n<td>${i.json[\"Total\"] || 0}</td>\n<td>${i.json[\"Total Per Annum\"] || 0}</td>\n<td>${i.json[\"DueDate\"] || 'N/A'}</td>\n<td>${i.json[\"Payment Cycle\"] || 'N/A'}</td>\n<td style=\"color:red;font-weight:bold\">${i.json.daysRemaining}</td>\n<td>${i.json[\"New Circuit ID\"] || 'N/A'}</td>\n</tr>`;\n});\n\nhtml += `</table><br><br>Regards,<br>IT Team (systems)`;\n\n// Safe minDays calculation\nconst validItems = items.filter(i => i.json.daysRemaining !== undefined);\nif (!validItems.length) return [];\n\nconst minDays = Math.min(...validItems.map(i => i.json.daysRemaining));\n\nconst subjectMap = {\n  5: '⏳ Payment Due in 5 Days – Action Required',\n  4: '⚠️ Payment Due in 4 Days',\n  3: '🚨 Payment Due in 3 Days – Urgent',\n  2: '🔥 Payment Due in 2 Days – Immediate Attention',\n  1: '❗ FINAL REMINDER – Payment Due Tomorrow'\n};\n\nreturn [{\n  json: {\n    graphBody: {\n      message: {\n        subject: subjectMap[minDays] || 'Payment Due Alert',\n        body: {\n          contentType: 'HTML',\n          content: html\n        },\n        toRecipients: [\n          { emailAddress: { address: 'systems@ninestars.in' } },\n          { emailAddress: { address: 'prem.d@ninestars.in' } }\n        ]\n      },\n      saveToSentItems: true\n    }\n  }\n}];"
+      },
+      "name": "Generate Graph Body",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        928,
+        16
+      ],
+      "id": "49465270-41b1-4b93-900c-86ba43ad7c71"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.graphBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        0
+      ],
+      "id": "be5db958-8810-48f1-9bc6-191be31bb344",
+      "name": "HTTP Request",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Excel File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Excel File": {
+      "main": [
+        [
+          {
+            "node": "Excel to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Excel to JSON": {
+      "main": [
+        [
+          {
+            "node": "Calculate Days Remaining",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Days Remaining": {
+      "main": [
+        [
+          {
+            "node": "Filter 5 to 1 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter 5 to 1 Days": {
+      "main": [
+        [
+          {
+            "node": "Generate Graph Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Graph Body": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "25b86649-eb81-45d0-8261-62bdee59c8c8",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "KaQ4r7wrwMAynA8h",
+  "tags": []
+}

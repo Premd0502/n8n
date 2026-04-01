@@ -1,0 +1,879 @@
+{
+  "name": "Multi-ISP 24/7 Monitoring and Alert Notification System",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "487cc902-cb86-4519-a740-297bb5073e18",
+      "name": "Monitor Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1152,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('node');\n\nif (!staticData.previous) {\n  staticData.previous = {};\n}\n\nconst previousStatus = staticData.previous[$json.name];\nconst currentStatus = $json.status;\n\nlet notify = false;\nlet changeType = null;\n\n// Detect change\nif (previousStatus !== undefined && previousStatus !== currentStatus) {\n  notify = true;\n  changeType = currentStatus === \"UP\" ? \"DOWN_TO_UP\" : \"UP_TO_DOWN\";\n}\n\n// Save current state\nstaticData.previous[$json.name] = currentStatus;\n\nreturn {\n  json: {\n    ...$json,\n    notify,\n    changeType,\n    previousStatus\n  }\n};"
+      },
+      "id": "375e7353-8464-4896-ad1c-55b4a9523989",
+      "name": "Ping All ISPs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "ispResults",
+        "options": {}
+      },
+      "id": "f44242ec-8c28-4698-8a88-7ed88cd32a8b",
+      "name": "Split ISP Results",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.stateChanged }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a9404345-7a91-477f-854f-e85d4ed8377a",
+      "name": "Check State Change",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -64,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4f323630-751c-4d35-8632-19fe89b98d40",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a3ba707c-3dcb-48ab-808b-1a780a2a2b20",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6fffb2c0-6585-4da9-bae7-055e816733a8",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ffab9a14-a2f3-4b0a-bdf7-63cfe3dce2bd",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2e6a2565-ac31-435e-92f6-7995adc32b4a",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7bfebd1b-efcc-4273-b69d-1ecb10f1dfc9",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e10795a1-ff28-447a-89b0-d0f54ac65434",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3315a3bf-e06c-403e-a52e-32579cc38568",
+                    "leftValue": "",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cbc994f8-a8f0-408d-b0fb-f1cf7fb59469",
+      "name": "Route by ISP and State",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_and_isp",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in,support@airtel.in",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Airtel ISP Link Down - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=ALERT: Airtel ISP connection is DOWN. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}. Please investigate immediately.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2cca0bef-0522-462d-8bb2-ebf17b64ff62",
+      "name": "Prepare Airtel Down Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_only",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Airtel ISP Link Restored - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=RESOLVED: Airtel ISP connection is back UP. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "99e9a232-0536-468d-976e-f3c17fa6d8da",
+      "name": "Prepare Airtel Up Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_and_isp",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in,<__PLACEHOLDER_VALUE__act_support_email__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Act ISP Link Down - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=ALERT: Act ISP connection is DOWN. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}. Please investigate immediately.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d9c1dc98-5327-4b7e-842c-36289c329f7e",
+      "name": "Prepare Act Down Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_only",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Act ISP Link Restored - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=RESOLVED: Act ISP connection is back UP. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}.",
+              "type": "string"
+            },
+            {
+              "id": "df723d36-e797-49fb-8505-89613cbc02f5",
+              "name": "",
+              "value": "122.183.243.48",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "01021ed2-e06e-4edc-8070-a3ea0fb2f808",
+      "name": "Prepare Act Up Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_and_isp",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in,<__PLACEHOLDER_VALUE__reliance_support_email__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Reliance ISP Link Down - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=ALERT: Reliance ISP connection is DOWN. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}. Please investigate immediately.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e0882a18-1f56-4eea-b80a-c26aa1012138",
+      "name": "Prepare Reliance Down Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_only",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Reliance ISP Link Restored - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=RESOLVED: Reliance ISP connection is back UP. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "168db9b0-1b2c-4891-b972-77d6addd9061",
+      "name": "Prepare Reliance Up Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_and_isp",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in,<__PLACEHOLDER_VALUE__tikona_support_email__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Tikona ISP Link Down - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=ALERT: Tikona ISP connection is DOWN. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}. Please investigate immediately.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9f1fa839-9d38-4da5-bf5a-1b78718fc374",
+      "name": "Prepare Tikona Down Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "emailType",
+              "value": "local_only",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "recipients",
+              "value": "abc@ninestars.in,cde@ninestars.in,systems@ninestars.in",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "subject",
+              "value": "=Tikona ISP Link Restored - {{ $json.ip }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "body",
+              "value": "=RESOLVED: Tikona ISP connection is back UP. IP Address: {{ $json.ip }}. Time: {{ $now.toISO() }}.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9a3f4896-30d8-43e9-846e-af5525b10ba6",
+      "name": "Prepare Tikona Up Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.graphBody) }}",
+        "options": {}
+      },
+      "id": "704b44ff-1fc1-45a7-9ab0-f4834a895278",
+      "name": "Send Email via Azure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        608,
+        720
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "timezone": "Asia/Kolkata"
+        }
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        704
+      ],
+      "id": "936dc646-ca49-4392-b68b-21e17ecd71d1",
+      "name": "Date & Time"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check State Change": {
+      "main": [
+        [
+          {
+            "node": "Route by ISP and State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monitor Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Date & Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ping All ISPs": {
+      "main": [
+        [
+          {
+            "node": "Split ISP Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split ISP Results": {
+      "main": [
+        [
+          {
+            "node": "Check State Change",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by ISP and State": {
+      "main": [
+        [
+          {
+            "node": "Prepare Airtel Down Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Airtel Up Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Act Down Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Act Up Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Reliance Down Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Reliance Up Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Tikona Down Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Tikona Up Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Airtel Down Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Airtel Up Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Act Down Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Act Up Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Reliance Down Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Reliance Up Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Tikona Down Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Tikona Up Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email via Azure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "main": [
+        [
+          {
+            "node": "Ping All ISPs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e5330d4a-c605-4d42-a5cf-7ec79ef547a8",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "XIe96Udqz0MUJqUV",
+  "tags": []
+}
