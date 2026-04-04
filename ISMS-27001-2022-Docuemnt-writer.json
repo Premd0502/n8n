@@ -1,0 +1,161 @@
+{
+  "name": "ISMS-27001-2022-Docuemnt-writer",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "502d89fe-b669-47bc-8e91-a468fc5ba22b",
+              "name": "Policy Name",
+              "value": "\"Development Team secure Policy\"",
+              "type": "string"
+            },
+            {
+              "id": "87e1c9a4-d65d-498f-88b6-89534ec5e54a",
+              "name": "Team",
+              "value": "\"Development Team\"",
+              "type": "string"
+            },
+            {
+              "id": "1c2b7d0a-031c-4b75-9dd4-4da2cdd6a674",
+              "name": "Evidence",
+              "value": "=[\n  {\n    \"control\": \"A.8.28 Secure Coding\",\n    \"evidence_type\": \"Process\",\n    \"description\": \"Secure coding guidelines implemented\",\n    \"proof\": \"Internal policy document\",\n    \"owner\": \"Development Team\",\n    \"review_date\": \"2026-04-01\"\n  },\n  {\n    \"control\": \"A.8.25 Secure Development Lifecycle\",\n    \"evidence_type\": \"Tool\",\n    \"description\": \"SAST/DAST implemented\",\n    \"proof\": \"Scan reports\",\n    \"owner\": \"Security Team\",\n    \"review_date\": \"2026-04-01\"\n  }\n]",
+              "type": "array"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "c8280181-20fc-4145-8263-7f9ef8d0d2e2",
+      "name": "Set Policy Input",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        288,
+        -48
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "functionCode": "const policy = $json[\"Policy Name\"];\nconst team = $json[\"Team\"];\nconst evidence = $json[\"Evidence\"];\n\nlet evidenceText = \"\";\n\nif (Array.isArray(evidence)) {\n  evidenceText = evidence.map((e, i) => {\n    return `\n${i+1}. Control: ${e.control}\n   Type: ${e.evidence_type}\n   Description: ${e.description}\n   Proof: ${e.proof}\n   Owner: ${e.owner}\n   Review Date: ${e.review_date}\n`;\n  }).join(\"\\n\");\n} else {\n  evidenceText = \"No evidence provided\";\n}\n\nconst document = `\nISMS POLICY DOCUMENT\n\n1. Policy Name:\n${policy}\n\n2. Purpose:\nTo establish controls aligned with ISO/IEC 27001:2022.\n\n3. Scope:\nApplies to ${team}\n\n7. Evidence Provided:\n${evidenceText}\n\n--- END ---\n`;\n\nreturn [{ json: { document } }];"
+      },
+      "id": "57a6ed96-7ec1-4244-8aa6-2191424f4be2",
+      "name": "Generate ISMS Policy",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        544,
+        -48
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9134a6ac-60da-499d-a1f0-5bc75212fd43",
+              "name": "Cloud Policy",
+              "value": "={{ $json.document }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4ed24800-8913-4963-8976-1843a326d427",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        784,
+        -48
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -16
+      ],
+      "id": "4d1073b0-601a-4f0f-96ab-a2e1475cbeb4",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "html",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        992,
+        -48
+      ],
+      "id": "97e713ed-ce2f-4ea3-9a92-6c22d9c193ad",
+      "name": "Convert to File"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Set Policy Input": {
+      "main": [
+        [
+          {
+            "node": "Generate ISMS Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate ISMS Policy": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Set Policy Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f58f8e8f-c966-42b2-a4ef-a833c8c046e1",
+  "meta": {
+    "instanceId": "d10652121612eb52d2f72c9037deaf9bb475e2e18eaceb0d3dd341ed4086eaab"
+  },
+  "id": "55tdd4eFQOn31nrQ",
+  "tags": []
+}
