@@ -1,0 +1,252 @@
+{
+  "name": "ISMS-27001-2022-Docuemnt-writer enanced",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "502d89fe-b669-47bc-8e91-a468fc5ba22b",
+              "name": "Policy Name",
+              "value": "\"Secure policy\"",
+              "type": "string"
+            },
+            {
+              "id": "87e1c9a4-d65d-498f-88b6-89534ec5e54a",
+              "name": "Team",
+              "value": "\"Development Team\"",
+              "type": "string"
+            },
+            {
+              "id": "1c2b7d0a-031c-4b75-9dd4-4da2cdd6a674",
+              "name": "Evidence",
+              "value": "=[\n  {\n    \"control\": \"A.8.28 Secure Coding\",\n    \"evidence_type\": \"Process\",\n    \"description\": \"Secure coding guidelines implemented\",\n    \"proof\": \"Internal policy document\",\n    \"owner\": \"Development Team\",\n    \"review_date\": \"2026-04-01\"\n  },\n  {\n    \"control\": \"A.8.25 Secure Development Lifecycle\",\n    \"evidence_type\": \"Tool\",\n    \"description\": \"SAST/DAST implemented\",\n    \"proof\": \"Scan reports\",\n    \"owner\": \"Security Team\",\n    \"review_date\": \"2026-04-01\"\n  }\n]",
+              "type": "array"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "2254e9a4-3895-4e5e-9bd5-13d0ff3f069b",
+      "name": "Set Policy Input",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        16,
+        -256
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -144
+      ],
+      "id": "ec7e6bbf-8257-4120-b735-05579f482e0f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "html",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1136,
+        -16
+      ],
+      "id": "3171ba04-3f21-42a0-8683-edfe89feb8e9",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate a detailed ISO/IEC 27001:2022 ISMS policy document.\n\nPolicy Name: {{$json[\"Policy Name\"]}}\nTeam: {{$json[\"Team\"]}}\n\nEvidence Details:\n{{$json[\"Evidence\"].map((e,i) => `\n${i+1}. Control: ${e.control}\n   Type: ${e.evidence_type}\n   Description: ${e.description}\n   Proof: ${e.proof}\n   Owner: ${e.owner}\n   Review Date: ${e.review_date}\n`).join(\"\\n\")}}\n\nInstructions:\n- Generate a professional ISMS document\n- Include the following sections:\n  1. Policy Name\n  2. Purpose\n  3. Scope\n  4. Roles and Responsibilities\n  5. Policy Statement\n  6. Control Mapping (ISO 27001:2022)\n  7. Evidence Provided (detailed)\n  8. Compliance Status\n  9. Risk Considerations\n  10. Review and Audit\n- Do NOT summarize\n- Output must be detailed and multi-paragraph\n- Format properly with headings and numbering",
+        "needsFallback": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        256,
+        -304
+      ],
+      "id": "7ddfdbc8-8454-4025-a32c-b132fe857142",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        96,
+        32
+      ],
+      "id": "753b010e-6efc-47ab-a616-acce4d585e8a",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "pzos75LJLJzBWi1a",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "deepseek/deepseek-r1-0528-qwen3-8b",
+          "mode": "list",
+          "cachedResultName": "deepseek/deepseek-r1-0528-qwen3-8b"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        256,
+        32
+      ],
+      "id": "310a94b2-a8db-4719-8aca-5fd9a1aeeb34",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "kxLlitlJlqjytuVL",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "dd"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        384,
+        48
+      ],
+      "id": "b9f95f21-644f-41fc-a63a-8f5a78906a24",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5b0d307c-b61f-4cb9-a4ee-8c3fe470b160",
+              "name": "",
+              "value": "=final_document = {{$json[\"text\"]}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        624,
+        -272
+      ],
+      "id": "4d56336f-5073-41ed-be6f-4fc5852af89b",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Set Policy Input": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Set Policy Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        []
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c45f3662-3a02-4d0b-8cd6-08d4bd723f40",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d10652121612eb52d2f72c9037deaf9bb475e2e18eaceb0d3dd341ed4086eaab"
+  },
+  "id": "4Pu6KJTtMZBBeKzi",
+  "tags": []
+}
