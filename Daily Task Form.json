@@ -1,0 +1,197 @@
+{
+  "name": "Daily Task Form",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "DAILY TASK DETAILS",
+        "formDescription": "Update Daily Task Details",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "TASK Name"
+            },
+            {
+              "fieldLabel": "Task Start Time:"
+            },
+            {
+              "fieldLabel": "Task Complete Time:"
+            },
+            {
+              "fieldLabel": "Remarks"
+            },
+            {
+              "fieldLabel": "EMP ID",
+              "fieldType": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4b859394-f0bb-4d02-9c8b-1058f27e5a49",
+      "name": "On form submission",
+      "webhookId": "9b031eed-6665-42ab-b2fb-cbc1e2d594af"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ALkkTsuBnMTp9ha3_KjyJOtbfNqqe7rD9PM2K5M795w",
+          "mode": "list",
+          "cachedResultName": "Event Details",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ALkkTsuBnMTp9ha3_KjyJOtbfNqqe7rD9PM2K5M795w/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1295458128,
+          "mode": "list",
+          "cachedResultName": "Event",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ALkkTsuBnMTp9ha3_KjyJOtbfNqqe7rD9PM2K5M795w/edit#gid=1295458128"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email ID",
+              "displayName": "Email ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Age",
+              "displayName": "Age",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "submittedAt",
+              "displayName": "submittedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "formMode",
+              "displayName": "formMode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TASK Name",
+              "displayName": "TASK Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Task Start Time:",
+              "displayName": "Task Start Time:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Task Complete Time:",
+              "displayName": "Task Complete Time:",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Remarks",
+              "displayName": "Remarks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        208,
+        0
+      ],
+      "id": "1d18a176-3fc3-4e8a-a820-13d975841077",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GIaKRHuwHSkTvzlL",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d7554429-8edb-43ad-a95e-cb3d729a1378",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "sEZGBQvTCRJf0CQC",
+  "tags": []
+}

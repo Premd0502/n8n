@@ -1,0 +1,381 @@
+{
+  "name": "SIEM + Alerts Architecture",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "siem-logs",
+        "options": {}
+      },
+      "id": "13b6d34f-d36a-45e7-9577-78dc7884f051",
+      "name": "Receive Logs",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "d5d5098b-aa9d-4708-a920-226674e16d8a"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze the following security log event and identify potential threats:\n\nTimestamp: {{ $json.body.timestamp }}\nSource: {{ $json.body.source }}\nEvent Type: {{ $json.body.event_type }}\nSource IP: {{ $json.body.src_ip }}\nDestination IP: {{ $json.body.dst_ip }}\nPort: {{ $json.body.port }}\nProtocol: {{ $json.body.protocol }}\nAction: {{ $json.body.action }}\nMessage: {{ $json.body.message }}\n\nIdentify threat type, category, indicators, affected systems, attack vector, and provide confidence score.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a cybersecurity threat analysis expert. Analyze security log events to identify threats, categorize them, and assess confidence levels. Return structured JSON output with threat details."
+        }
+      },
+      "id": "2e80fafb-5417-4c51-8de5-64d7cbb3e2ef",
+      "name": "Threat Analysis Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "7828b4ba-04a9-4e24-b89f-1a86eaa1802e",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        480,
+        624
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "threat_detected": true,
+          "threat_type": "brute_force_attack",
+          "threat_category": "authentication",
+          "indicators": [
+            "multiple_failed_logins",
+            "suspicious_ip"
+          ],
+          "affected_systems": [
+            "firewall",
+            "ssh_server"
+          ],
+          "attack_vector": "SSH brute force",
+          "confidence": 0.95,
+          "analysis": "Multiple failed SSH login attempts from external IP indicate potential brute force attack"
+        }
+      },
+      "id": "c1b46da9-1785-4e0f-9e2d-9f77f39cf0d7",
+      "name": "Threat Analysis Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        608,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Based on the threat analysis below, calculate a comprehensive risk score:\n\nThreat Type: {{ $json.output.threat_type }}\nThreat Category: {{ $json.output.threat_category }}\nIndicators: {{ $json.output.indicators }}\nAffected Systems: {{ $json.output.affected_systems }}\nAttack Vector: {{ $json.output.attack_vector }}\nConfidence: {{ $json.output.confidence }}\nAnalysis: {{ $json.output.analysis }}\n\nProvide risk score (0-100), risk level, severity, impact score, likelihood score, business impact, recommended actions, urgency, and SLA deadline.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a cybersecurity risk assessment expert. Calculate comprehensive risk scores based on threat analysis, considering impact, likelihood, business context, and urgency. Return structured JSON output with risk metrics and recommended actions."
+        }
+      },
+      "id": "62f4ba4d-887a-47cc-98a3-da8a332f5106",
+      "name": "Risk Scoring Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        816,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "risk_score": 85,
+          "risk_level": "HIGH",
+          "severity": "critical",
+          "impact_score": 8,
+          "likelihood_score": 9,
+          "business_impact": "potential_data_breach",
+          "recommended_actions": [
+            "block_ip",
+            "enable_mfa",
+            "alert_security_team"
+          ],
+          "urgency": "immediate",
+          "sla_deadline": "15 minutes"
+        }
+      },
+      "id": "6cd51ce6-c845-435a-842b-8685c964955b",
+      "name": "Risk Scoring Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        896,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Format a comprehensive security alert based on the following information:\n\nTHREAT ANALYSIS:\nThreat Type: {{ $(\"Threat Analysis Agent\").item.json.output.threat_type }}\nCategory: {{ $(\"Threat Analysis Agent\").item.json.output.threat_category }}\nAttack Vector: {{ $(\"Threat Analysis Agent\").item.json.output.attack_vector }}\nAnalysis: {{ $(\"Threat Analysis Agent\").item.json.output.analysis }}\n\nRISK ASSESSMENT:\nRisk Score: {{ $json.output.risk_score }}/100\nRisk Level: {{ $json.output.risk_level }}\nSeverity: {{ $json.output.severity }}\nBusiness Impact: {{ $json.output.business_impact }}\nRecommended Actions: {{ $json.output.recommended_actions }}\nUrgency: {{ $json.output.urgency }}\nSLA Deadline: {{ $json.output.sla_deadline }}\n\nORIGINAL LOG:\nSource IP: {{ $(\"Receive Logs\").item.json.body.src_ip }}\nDestination IP: {{ $(\"Receive Logs\").item.json.body.dst_ip }}\nPort: {{ $(\"Receive Logs\").item.json.body.port }}\nProtocol: {{ $(\"Receive Logs\").item.json.body.protocol }}\n\nCreate alert_title, alert_summary, telegram_message (concise with emojis), email_subject, email_body (detailed HTML), priority, and incident_id.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a security alert formatting expert. Create clear, actionable security alerts for multiple channels (Telegram, Email). Format messages appropriately for each channel with proper urgency indicators and incident tracking. Return structured JSON output."
+        }
+      },
+      "id": "f315a1d7-f74f-4753-bc52-022d19557e29",
+      "name": "Alert Formatter Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1168,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "alert_title": "🚨 CRITICAL: SSH Brute Force Attack Detected",
+          "alert_summary": "High-risk brute force attack targeting SSH service",
+          "telegram_message": "Detailed alert for Telegram",
+          "email_subject": "CRITICAL SECURITY ALERT: SSH Brute Force Attack",
+          "email_body": "Detailed email body with HTML formatting",
+          "priority": "P1",
+          "incident_id": "INC-2024-001"
+        }
+      },
+      "id": "a3b0d563-c26b-4c0e-baf0-e15b3e14ea73",
+      "name": "Alert Formatter Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1248,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "<__PLACEHOLDER_VALUE__Your Telegram Chat ID (e.g., -1001234567890)__>",
+        "text": "={{ $json.output.telegram_message }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "ed8c8b52-b794-47af-a2dd-1b4cb1a11afa",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1520,
+        208
+      ],
+      "webhookId": "f710d89f-4ed5-4541-8a94-d9cb9b6eae12",
+      "credentials": {
+        "telegramApi": {
+          "id": "JfN880W5iDcuJ28x",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__security-team@company.com__>",
+        "subject": "={{ $(\"Alert Formatter Agent\").item.json.output.email_subject }}",
+        "message": "={{ $(\"Alert Formatter Agent\").item.json.output.email_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a705a287-71cf-44a6-a709-add827c5b9c0",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        400
+      ],
+      "webhookId": "a53aed61-75f1-4611-948e-d65daa446990",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "DpugVP1MU4T3yZsm",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "id": "9c3598a5-bc11-48be-8a6a-cc463d12021a",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1520,
+        592
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GIaKRHuwHSkTvzlL",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Logs": {
+      "main": [
+        [
+          {
+            "node": "Threat Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threat Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Risk Scoring Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Threat Analysis Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Risk Scoring Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Alert Formatter Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threat Analysis Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Threat Analysis Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Scoring Agent": {
+      "main": [
+        [
+          {
+            "node": "Alert Formatter Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Scoring Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Risk Scoring Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Formatter Agent": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Formatter Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Alert Formatter Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "22d0addb-5afb-45b7-9ae0-300ffeb5db60",
+  "meta": {
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "3QXRs9nmqSMkcd9j",
+  "tags": []
+}

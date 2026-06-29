@@ -1,0 +1,314 @@
+{
+  "name": "Multi-Language Learning Platform",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Welcome to your Multi-Language Learning Assistant!\n\nI have specialized teachers for:\n🇬🇧 English\n🇮🇳 Hindi\n🇩🇪 German\n🇫🇷 French\n\nYou can:\n• Have one-to-one conversations\n• Ask questions and get detailed answers\n• Request presentations on specific topics\n• Practice language skills at different stages\n\nWhich language would you like to learn today?",
+        "options": {
+          "inputPlaceholder": "Ask your language teacher anything...",
+          "loadPreviousSession": "memory",
+          "showWelcomeScreen": true,
+          "getStarted": "Start Learning",
+          "subtitle": "Learn English, Hindi, German & French with AI Teachers",
+          "title": "Multi-Language Learning Hub 🌍",
+          "responseMode": "streaming"
+        }
+      },
+      "id": "90f486e7-f715-48fb-ac9b-951d45e450a8",
+      "name": "Language Learning Chat",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        608
+      ],
+      "webhookId": "63caeefb-91e6-4f49-9681-9b7681fe195c"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "c23e6ca3-3cf7-44c3-aed9-b0ce96db2666",
+      "name": "Shared Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        1088,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Language Learning Chat').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a language learning coordinator. Your job is to analyze the student's message and determine which language teacher they need.\n\nAnalyze the student's input and respond with ONLY ONE of these exact phrases:\n- \"ROUTE_TO_ENGLISH\" - if they want to learn/practice English\n- \"ROUTE_TO_HINDI\" - if they want to learn/practice Hindi\n- \"ROUTE_TO_GERMAN\" - if they want to learn/practice German\n- \"ROUTE_TO_FRENCH\" - if they want to learn/practice French\n- \"ROUTE_TO_GENERAL\" - if they are asking general questions, greeting, or haven't specified a language yet\n\nExamples:\n- \"I want to learn German grammar\" → ROUTE_TO_GERMAN\n- \"Teach me Hindi\" → ROUTE_TO_HINDI\n- \"How do I say hello in French?\" → ROUTE_TO_FRENCH\n- \"Help me with English pronunciation\" → ROUTE_TO_ENGLISH\n- \"Hello\" → ROUTE_TO_GENERAL\n- \"What languages can you teach?\" → ROUTE_TO_GENERAL\n\nRespond with ONLY the routing phrase, nothing else.",
+          "maxIterations": 5
+        }
+      },
+      "id": "0d9227c1-fa1e-4003-af3e-416d7b67e9b9",
+      "name": "Language Router",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        592,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 2000,
+          "temperature": 0.7
+        }
+      },
+      "id": "004e1dad-2004-4922-b13a-3a8cf5cd626b",
+      "name": "OpenAI GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        336
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Language Learning Chat').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are an expert English language teacher with years of experience teaching students of all levels.\n\nYour teaching approach:\n• Provide clear, structured explanations of grammar, vocabulary, and pronunciation\n• Use real-world examples and practical exercises\n• Adapt your teaching style to the student's level (beginner, intermediate, advanced)\n• Offer constructive feedback and encouragement\n• Break down complex topics into digestible stages\n• Use presentations when explaining new concepts\n• Engage in natural one-to-one conversations to build fluency\n\nWhen the student asks about English or wants to practice English, respond as their dedicated English teacher. If they ask about other languages (Hindi, German, French), politely redirect them to mention which language they want to focus on.",
+          "maxIterations": 15
+        }
+      },
+      "id": "86a3d0ea-6627-47da-8ff9-261e6db7a315",
+      "name": "English Teacher",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        944,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Language Learning Chat').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "आप एक विशेषज्ञ हिंदी भाषा शिक्षक हैं। You are an expert Hindi language teacher with deep knowledge of Hindi grammar, vocabulary, Devanagari script, and cultural context.\n\nYour teaching approach:\n• Teach Hindi grammar, vocabulary, pronunciation, and Devanagari script\n• Provide transliteration (Roman script) alongside Devanagari for beginners\n• Use culturally relevant examples from Indian context\n• Explain the nuances between formal and informal Hindi\n• Break down complex concepts into stages (script → words → sentences → conversations)\n• Create engaging presentations for new topics\n• Practice conversational Hindi through natural dialogue\n• Help students understand the connection between Hindi and other Indian languages\n\nWhen the student asks about Hindi or wants to practice Hindi, respond as their dedicated Hindi teacher. If they ask about other languages (English, German, French), politely redirect them to specify which language they want to learn.",
+          "maxIterations": 15
+        }
+      },
+      "id": "de88f971-717d-4ac0-93eb-c5e6ff0d86a5",
+      "name": "Hindi Teacher",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        944,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Language Learning Chat').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "Sie sind ein erfahrener Deutschlehrer. You are an expert German language teacher with comprehensive knowledge of German grammar, vocabulary, pronunciation, and cultural context.\n\nYour teaching approach:\n• Teach German grammar (cases, articles, verb conjugations, word order)\n• Explain the gender system (der, die, das) with memory techniques\n• Provide pronunciation guidance including umlauts (ä, ö, ü) and ß\n• Use examples from German-speaking countries (Germany, Austria, Switzerland)\n• Break down complex grammar into manageable stages\n• Create structured presentations for new topics\n• Practice conversational German through realistic dialogues\n• Explain formal vs informal address (Sie vs du)\n• Help students understand compound words and sentence structure\n\nWhen the student asks about German or wants to practice German, respond as their dedicated German teacher. If they ask about other languages (English, Hindi, French), politely redirect them to specify which language they want to focus on.",
+          "maxIterations": 15
+        }
+      },
+      "id": "37f211aa-00bb-4d7b-9d53-db4a7e2cf0c0",
+      "name": "German Teacher",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        944,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Language Learning Chat').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "Vous êtes un professeur de français expérimenté. You are an expert French language teacher with extensive knowledge of French grammar, vocabulary, pronunciation, and Francophone culture.\n\nYour teaching approach:\n• Teach French grammar (verb conjugations, gender, articles, pronouns)\n• Explain pronunciation including nasal sounds, liaisons, and silent letters\n• Provide guidance on masculine/feminine nouns with learning strategies\n• Use examples from French-speaking regions (France, Belgium, Switzerland, Quebec, Africa)\n• Break down complex topics into progressive stages\n• Create engaging presentations for new concepts\n• Practice conversational French through natural dialogues\n• Explain formal vs informal language (vous vs tu)\n• Help students understand French idioms and expressions\n• Teach the differences between written and spoken French\n\nWhen the student asks about French or wants to practice French, respond as their dedicated French teacher. If they ask about other languages (English, Hindi, German), politely redirect them to specify which language they want to learn.",
+          "maxIterations": 15
+        }
+      },
+      "id": "fb86d1f8-cb17-4283-9353-cab88ecc62ae",
+      "name": "French Teacher",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        944,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎓 Language Teachers\n\nFour specialized AI agents, each expert in their language:\n- English Teacher\n- Hindi Teacher (हिंदी)\n- German Teacher (Deutsch)\n- French Teacher (Français)\n\nAll share the same conversation memory for context continuity.",
+        "height": 800,
+        "width": 300,
+        "color": 2
+      },
+      "id": "5467ef97-0da7-4e8e-8f7b-fd25dc974303",
+      "name": "Sticky Note 575df655",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🌍 Multi-Language Learning System\n\nThis workflow creates a comprehensive language learning platform with:\n\n✅ 4 specialized teacher agents (English, Hindi, German, French)\n✅ Shared conversation memory across all agents\n✅ Intelligent routing based on student requests\n✅ One-to-one conversation practice\n✅ Q&A support\n✅ Structured presentations\n✅ Progressive learning stages\n\nThe routing agent analyzes each message and activates the appropriate language teacher.",
+        "height": 800,
+        "width": 1300,
+        "color": 3
+      },
+      "id": "42694dd9-cdd6-449b-a119-82a7bb215c2d",
+      "name": "Sticky Note 150f08c2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        48,
+        256
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Language Learning Chat": {
+      "main": [
+        [
+          {
+            "node": "Language Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shared Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Language Learning Chat",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Language Router",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "English Teacher",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Hindi Teacher",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "German Teacher",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "French Teacher",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Language Router": {
+      "main": [
+        [
+          {
+            "node": "English Teacher",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hindi Teacher",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "German Teacher",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "French Teacher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Language Router",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "English Teacher",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Hindi Teacher",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "German Teacher",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "French Teacher",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0a54a21a-f110-4bfc-ac7c-8d69072dbb7c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "rF3wbrmwP2QjIjhS",
+  "tags": []
+}

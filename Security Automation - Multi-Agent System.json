@@ -1,0 +1,765 @@
+{
+  "name": "Security Automation - Multi-Agent System",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "2d9dea02-f963-4a61-9848-8203385c5cc5",
+      "name": "Security Scan Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a cybersecurity threat detection specialist. Search for the latest security threats, vulnerabilities, and exploits. Focus on:\n1. Critical CVEs published in the last 24 hours\n2. Active exploit campaigns and malware\n3. Zero-day vulnerabilities\n4. Ransomware and APT activity\n\nFor each threat, identify: name, severity (critical/high/medium/low), description, affected systems, and detection indicators.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert cybersecurity analyst specializing in threat intelligence. Use the Threat Intelligence Search tool to find current threats. Be thorough and accurate.",
+          "maxIterations": 5
+        }
+      },
+      "id": "6f49fdba-2695-4cde-89f7-2f7287a441fd",
+      "name": "Threat Detection Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        528,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "1e4e658a-427c-45d6-bbd6-39a2f0825214",
+      "name": "OpenAI GPT-5",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        480,
+        496
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "query": "={{ \"latest cybersecurity threats vulnerabilities exploits CVE \" + $now.toFormat(\"yyyy-MM-dd\") }}",
+        "simplify": true,
+        "options": {
+          "maxResults": 15,
+          "searchRecencyFilter": "day"
+        },
+        "requestOptions": {}
+      },
+      "id": "40ace110-5642-4e13-b637-c15688a100b6",
+      "name": "Threat Intelligence Search",
+      "type": "n8n-nodes-base.perplexityTool",
+      "typeVersion": 2,
+      "position": [
+        592,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "threats": [
+            {
+              "name": "CVE-2024-12345",
+              "severity": "critical",
+              "description": "Remote code execution vulnerability",
+              "affectedSystems": [
+                "Windows Server",
+                "Linux"
+              ],
+              "detectionDate": "2024-01-15",
+              "indicators": [
+                "unusual network traffic",
+                "unauthorized access attempts"
+              ]
+            }
+          ],
+          "summary": "Found 5 critical threats in the last 24 hours"
+        }
+      },
+      "id": "c588e2db-e5a4-40d8-923d-4e80d90c55c4",
+      "name": "Threat Detection Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "78832e8c-09a9-44e6-ac28-4581f766f5d8",
+      "name": "Combine Security Intelligence",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        928,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a vulnerability management specialist. Track and analyze security vulnerabilities. For each vulnerability:\n1. Identify CVE ID and CVSS score\n2. Determine severity level\n3. List affected products and versions\n4. Check if exploits are available in the wild\n5. Verify if patches are available\n6. Provide patch URLs when available\n\nPrioritize critical and high severity vulnerabilities.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a vulnerability tracking expert. Use the Vulnerability Database Search tool to find and analyze CVEs. Focus on actionable intelligence.",
+          "maxIterations": 5
+        }
+      },
+      "id": "22de3484-1226-4bb3-9964-e3e7fd30a962",
+      "name": "Vulnerability Tracking Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        528,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "query": "={{ \"CVE vulnerability database CVSS score patch available \" + $now.toFormat(\"yyyy-MM-dd\") }}",
+        "simplify": true,
+        "options": {
+          "maxResults": 20,
+          "searchRecencyFilter": "week"
+        },
+        "requestOptions": {}
+      },
+      "id": "1c0227c6-182f-4e88-8a7c-2ba13077ba82",
+      "name": "Vulnerability Database Search",
+      "type": "n8n-nodes-base.perplexityTool",
+      "typeVersion": 2,
+      "position": [
+        528,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "vulnerabilities": [
+            {
+              "cveId": "CVE-2024-12345",
+              "cvssScore": 9.8,
+              "severity": "critical",
+              "affectedProducts": [
+                "Product A v1.0",
+                "Product B v2.3"
+              ],
+              "description": "Buffer overflow vulnerability",
+              "exploitAvailable": true,
+              "patchAvailable": true,
+              "patchUrl": "https://vendor.com/patch",
+              "trackingStatus": "active"
+            }
+          ],
+          "totalVulnerabilities": 15,
+          "criticalCount": 5
+        }
+      },
+      "id": "e5e9a484-0747-4b4f-94b5-94880056769a",
+      "name": "Vulnerability Tracking Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are a patch management specialist. Analyze available security patches and provide deployment recommendations. For each patch:\n1. Identify patch ID and CVEs addressed\n2. Determine vendor and affected products\n3. Assess priority level (critical/high/medium/low)\n4. Evaluate installation complexity\n5. Note if system reboot is required\n6. List prerequisites and dependencies\n7. Estimate deployment downtime\n8. Provide deployment recommendation and timeline\n\nPrioritize patches for critical vulnerabilities with active exploits.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a patch management expert. Use the Patch Information Search tool to find patches. Provide practical deployment guidance.",
+          "maxIterations": 5
+        }
+      },
+      "id": "09339f11-ed2a-437a-ab38-6662e1f7f2d3",
+      "name": "Patch Recommendation Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        528,
+        1104
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "query": "={{ \"security patch update hotfix vendor advisory \" + $now.toFormat(\"yyyy-MM-dd\") }}",
+        "simplify": true,
+        "options": {
+          "maxResults": 15,
+          "searchRecencyFilter": "week"
+        },
+        "requestOptions": {}
+      },
+      "id": "77c0174a-45c4-4610-a6da-c184908e8e3e",
+      "name": "Patch Information Search",
+      "type": "n8n-nodes-base.perplexityTool",
+      "typeVersion": 2,
+      "position": [
+        528,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "patches": [
+            {
+              "patchId": "MS-2024-001",
+              "cveAddressed": [
+                "CVE-2024-12345",
+                "CVE-2024-12346"
+              ],
+              "vendor": "Microsoft",
+              "product": "Windows Server 2022",
+              "releaseDate": "2024-01-15",
+              "priority": "critical",
+              "installationComplexity": "medium",
+              "requiresReboot": true,
+              "downloadUrl": "https://vendor.com/patch",
+              "prerequisites": [
+                "KB123456"
+              ],
+              "estimatedDowntime": "30 minutes",
+              "recommendation": "Deploy immediately to production"
+            }
+          ],
+          "summary": "Recommended 8 critical patches for immediate deployment"
+        }
+      },
+      "id": "1cc3792d-dded-4500-9d3c-fcfb886a8ed7",
+      "name": "Patch Recommendation Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are an incident response specialist. Create comprehensive incident response plans for security threats. For each incident type:\n1. Define detection phase: indicators, tools, and initial actions\n2. Outline containment phase: immediate and short-term actions\n3. Detail eradication phase: removal and verification steps\n4. Plan recovery phase: restoration steps and timeline\n5. Specify post-incident activities: documentation and improvements\n6. Identify key stakeholders and communication plan\n\nFollow NIST incident response framework. Focus on ransomware, data breaches, DDoS, and insider threats.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an incident response expert following NIST guidelines. Use the Incident Response Search tool to find best practices. Create actionable, detailed plans.",
+          "maxIterations": 5
+        }
+      },
+      "id": "670ec22c-bdab-48c1-9f30-c59b64a5369c",
+      "name": "Incident Response Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        528,
+        1616
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "query": "={{ \"incident response playbook security breach mitigation NIST framework \" + $now.toFormat(\"yyyy-MM-dd\") }}",
+        "simplify": true,
+        "options": {
+          "maxResults": 10,
+          "searchRecencyFilter": "month"
+        },
+        "requestOptions": {}
+      },
+      "id": "dfffd8c1-f081-4eea-af11-823c29d330c1",
+      "name": "Incident Response Search",
+      "type": "n8n-nodes-base.perplexityTool",
+      "typeVersion": 2,
+      "position": [
+        528,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "incidentPlans": [
+            {
+              "incidentType": "Ransomware Attack",
+              "severity": "critical",
+              "detectionPhase": {
+                "indicators": [
+                  "encrypted files",
+                  "ransom note",
+                  "unusual network traffic"
+                ],
+                "tools": [
+                  "EDR",
+                  "SIEM",
+                  "Network monitoring"
+                ],
+                "actions": [
+                  "Isolate affected systems",
+                  "Capture forensic images",
+                  "Alert security team"
+                ]
+              },
+              "containmentPhase": {
+                "immediate": [
+                  "Disconnect from network",
+                  "Disable user accounts",
+                  "Block malicious IPs"
+                ],
+                "shortTerm": [
+                  "Identify patient zero",
+                  "Scope of infection",
+                  "Preserve evidence"
+                ]
+              },
+              "eradicationPhase": {
+                "actions": [
+                  "Remove malware",
+                  "Rebuild systems",
+                  "Patch vulnerabilities"
+                ],
+                "verification": [
+                  "Scan for persistence",
+                  "Validate backups",
+                  "Test recovery"
+                ]
+              },
+              "recoveryPhase": {
+                "steps": [
+                  "Restore from clean backups",
+                  "Monitor for reinfection",
+                  "Gradual service restoration"
+                ],
+                "timeline": "24-72 hours"
+              },
+              "postIncident": {
+                "documentation": [
+                  "Timeline of events",
+                  "Root cause analysis",
+                  "Lessons learned"
+                ],
+                "improvements": [
+                  "Update detection rules",
+                  "Enhance monitoring",
+                  "Staff training"
+                ]
+              },
+              "stakeholders": [
+                "CISO",
+                "IT Team",
+                "Legal",
+                "PR",
+                "Executive Leadership"
+              ],
+              "communicationPlan": "Notify within 1 hour, status updates every 4 hours"
+            }
+          ],
+          "summary": "Generated 4 incident response plans for common attack scenarios"
+        }
+      },
+      "id": "eaf4dfa8-24c1-41ed-9754-7c56b6f33a4c",
+      "name": "Incident Response Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "report_id",
+              "name": "reportId",
+              "value": "={{ $now.toFormat(\"yyyyMMdd-HHmmss\") }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "report_title",
+              "name": "title",
+              "value": "=Security Automation Report - {{ $now.toFormat(\"MMMM d, yyyy\") }}",
+              "type": "string"
+            },
+            {
+              "id": "threats",
+              "name": "threatDetection",
+              "value": "={{ $(\"Threat Detection Agent\").item.json.output }}",
+              "type": "object"
+            },
+            {
+              "id": "vulnerabilities",
+              "name": "vulnerabilityTracking",
+              "value": "={{ $(\"Vulnerability Tracking Agent\").item.json.output }}",
+              "type": "object"
+            },
+            {
+              "id": "patches",
+              "name": "patchRecommendations",
+              "value": "={{ $(\"Patch Recommendation Agent\").item.json.output }}",
+              "type": "object"
+            },
+            {
+              "id": "incidents",
+              "name": "incidentResponsePlans",
+              "value": "={{ $(\"Incident Response Agent\").item.json.output }}",
+              "type": "object"
+            },
+            {
+              "id": "summary",
+              "name": "executiveSummary",
+              "value": "=Comprehensive security analysis completed. Threats detected: {{ $(\"Threat Detection Agent\").item.json.output.threats.length ?? 0 }}. Vulnerabilities tracked: {{ $(\"Vulnerability Tracking Agent\").item.json.output.totalVulnerabilities ?? 0 }}. Patches recommended: {{ $(\"Patch Recommendation Agent\").item.json.output.patches.length ?? 0 }}. Incident plans created: {{ $(\"Incident Response Agent\").item.json.output.incidentPlans.length ?? 0 }}.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "70230a20-e83d-4140-826b-5c4f760d7c47",
+      "name": "Format Security Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "security_reports"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "reportId",
+              "keyValue": "={{ $json.reportId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reportId": "={{ $json.reportId }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "title": "={{ $json.title }}",
+            "threatDetection": "={{ JSON.stringify($json.threatDetection) }}",
+            "vulnerabilityTracking": "={{ JSON.stringify($json.vulnerabilityTracking) }}",
+            "patchRecommendations": "={{ JSON.stringify($json.patchRecommendations) }}",
+            "incidentResponsePlans": "={{ JSON.stringify($json.incidentResponsePlans) }}",
+            "executiveSummary": "={{ $json.executiveSummary }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "98c75094-223f-401a-9dc4-39be790d0a3f",
+      "name": "Store Security Reports",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1376,
+        1104
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "security-alerts"
+        },
+        "messageType": "block",
+        "blocksUi": "={{ [{\"type\": \"header\", \"text\": {\"type\": \"plain_text\", \"text\": \"🔒 Security Automation Report\"}}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*Executive Summary*\\n{{ $json.executiveSummary }}\"}}, {\"type\": \"section\", \"fields\": [{\"type\": \"mrkdwn\", \"text\": \"*Threats Detected:*\\n{{ $json.threatDetection.threats.length ?? 0 }}\"}, {\"type\": \"mrkdwn\", \"text\": \"*Vulnerabilities:*\\n{{ $json.vulnerabilityTracking.totalVulnerabilities ?? 0 }}\"}, {\"type\": \"mrkdwn\", \"text\": \"*Patches Recommended:*\\n{{ $json.patchRecommendations.patches.length ?? 0 }}\"}, {\"type\": \"mrkdwn\", \"text\": \"*Incident Plans:*\\n{{ $json.incidentResponsePlans.incidentPlans.length ?? 0 }}\"}]}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"📊 *Report ID:* `{{ $json.reportId }}`\\n🕐 *Generated:* {{ $json.timestamp }}\"}}] }}",
+        "text": "={{ $json.executiveSummary }}",
+        "otherOptions": {}
+      },
+      "id": "ddacd66d-d971-4306-9635-a7eed1f302eb",
+      "name": "Notify Security Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1376,
+        912
+      ],
+      "webhookId": "ed57c629-8566-4b6a-8290-a601e9d23dec"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Security Scan Schedule": {
+      "main": [
+        [
+          {
+            "node": "Threat Detection Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Vulnerability Tracking Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Patch Recommendation Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Incident Response Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threat Detection Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine Security Intelligence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Threat Detection Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Vulnerability Tracking Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Patch Recommendation Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Incident Response Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threat Intelligence Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Threat Detection Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threat Detection Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Threat Detection Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Security Intelligence": {
+      "main": [
+        [
+          {
+            "node": "Format Security Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vulnerability Tracking Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine Security Intelligence",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Vulnerability Database Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Vulnerability Tracking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vulnerability Tracking Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Vulnerability Tracking Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patch Recommendation Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine Security Intelligence",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Patch Information Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Patch Recommendation Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Patch Recommendation Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Patch Recommendation Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident Response Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine Security Intelligence",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Incident Response Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Incident Response Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident Response Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Incident Response Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Security Report": {
+      "main": [
+        [
+          {
+            "node": "Store Security Reports",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Security Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "fb36a8bc-14b0-4de6-9d67-c0c79bff7d0d",
+  "meta": {
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "PIi3voXqr8uNbSnc",
+  "tags": []
+}

@@ -1,0 +1,485 @@
+{
+  "name": "Linux Infrastructure AI Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "92eb68b0-c32c-4be5-861c-6ccb9866a9ea",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { exec } = require('child_process');\nconst util = require('util');\nconst execPromise = util.promisify(exec);\n\nconst servers = [];\n\nconst ansibleInventory = '/etc/ansible/hosts';\n\nconst commands = {\n  serverInfo: 'ansible all -m setup -a \"filter=ansible_hostname,ansible_distribution,ansible_distribution_version,ansible_processor_cores,ansible_memtotal_mb\" --one-line',\n  diskInfo: 'ansible all -m shell -a \"df -h | grep -v tmpfs\" --one-line',\n  memoryInfo: 'ansible all -m shell -a \"free -h\" --one-line',\n  diskIO: 'ansible all -m shell -a \"iostat -x 1 2 | tail -n +4\" --one-line',\n  logHealth: 'ansible all -m shell -a \"journalctl -p err -n 50 --no-pager\" --one-line'\n};\n\nasync function runAnsibleCommand(cmd) {\n  try {\n    const { stdout, stderr } = await execPromise(cmd);\n    return stdout;\n  } catch (error) {\n    return `Error: ${error.message}`;\n  }\n}\n\nconst results = await Promise.all([\n  runAnsibleCommand(commands.serverInfo),\n  runAnsibleCommand(commands.diskInfo),\n  runAnsibleCommand(commands.memoryInfo),\n  runAnsibleCommand(commands.diskIO),\n  runAnsibleCommand(commands.logHealth)\n]);\n\nconst [serverInfoRaw, diskInfoRaw, memoryInfoRaw, diskIORaw, logHealthRaw] = results;\n\nconst serverLines = serverInfoRaw.split('\\n').filter(line => line.trim() && line.includes('SUCCESS'));\n\nfor (const line of serverLines) {\n  const match = line.match(/^([^\\s]+)\\s+\\|\\s+SUCCESS/);\n  if (match) {\n    const hostname = match[1];\n    \n    const diskLine = diskInfoRaw.split('\\n').find(l => l.startsWith(hostname));\n    const memLine = memoryInfoRaw.split('\\n').find(l => l.startsWith(hostname));\n    const ioLine = diskIORaw.split('\\n').find(l => l.startsWith(hostname));\n    const logLine = logHealthRaw.split('\\n').find(l => l.startsWith(hostname));\n    \n    servers.push({\n      hostname: hostname,\n      serverInfo: line,\n      diskInfo: diskLine || 'N/A',\n      memoryInfo: memLine || 'N/A',\n      diskIO: ioLine || 'N/A',\n      logHealth: logLine || 'N/A',\n      timestamp: new Date().toISOString()\n    });\n  }\n}\n\nreturn servers.map(server => ({ json: server }));"
+      },
+      "id": "8b1f986e-f10d-47f2-822c-cbf7f84dbff0",
+      "name": "Collect Server Data via Ansible",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "servers",
+        "options": {}
+      },
+      "id": "1d7d7028-0511-4bb9-bfed-c71959ed2494",
+      "name": "Aggregate All Server Data",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        688,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze the following data from 50 Linux servers managed via Ansible:\n\n{{ $json.servers }}\n\nProvide a comprehensive analysis including:\n1. Overall infrastructure health status\n2. Critical issues requiring immediate attention (disk space >90%, memory issues, high I/O wait, critical errors in logs)\n3. Warnings and potential issues (disk space >75%, moderate resource usage)\n4. Performance optimization recommendations\n5. Security concerns from log analysis\n6. Capacity planning insights\n\nBe specific about which servers have issues and provide actionable recommendations.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert Linux System Administrator and Infrastructure Analyst with 20+ years of experience managing large-scale server infrastructures. You excel at identifying critical issues, performance bottlenecks, security vulnerabilities, and providing actionable recommendations. Your analysis is thorough, prioritized by severity, and includes specific remediation steps."
+        }
+      },
+      "id": "f7d5aa24-be4d-41fc-b36a-93de67e500ad",
+      "name": "Linux Infrastructure AI Analyst",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        912,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "4000d4b5-e55f-4a93-a5c6-ce6c848ed500",
+      "name": "OpenAI GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        832,
+        624
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "summary": "Overall infrastructure health summary",
+          "criticalIssues": [
+            "List of critical issues requiring immediate attention"
+          ],
+          "warnings": [
+            "List of warnings and potential issues"
+          ],
+          "recommendations": [
+            "List of actionable recommendations"
+          ],
+          "serverDetails": [
+            {
+              "hostname": "server name",
+              "status": "healthy/warning/critical",
+              "issues": [
+                "specific issues for this server"
+              ],
+              "metrics": {
+                "diskUsage": "percentage or description",
+                "memoryUsage": "percentage or description",
+                "ioPerformance": "status description",
+                "errorCount": "number of errors found"
+              }
+            }
+          ],
+          "actionRequired": true
+        }
+      },
+      "id": "33624748-9e0f-4d21-9222-d2a0a56bb0fb",
+      "name": "Analysis Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1056,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.output.actionRequired }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "leftValue": "={{ $json.output.criticalIssues.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "97359774-e291-4503-95a4-7b0eb5ffd3ae",
+      "name": "Critical Issues Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1264,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "alertTitle",
+              "value": "🚨 CRITICAL: Linux Infrastructure Issues Detected",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "alertMessage",
+              "value": "=*Infrastructure Health Report*\n\n*Summary:* {{ $json.output.summary }}\n\n*🔴 Critical Issues:*\n{{ $json.output.criticalIssues.join(\"\\n\") }}\n\n*⚠️ Warnings:*\n{{ $json.output.warnings.join(\"\\n\") }}\n\n*💡 Recommendations:*\n{{ $json.output.recommendations.join(\"\\n\") }}\n\n*Timestamp:* {{ $now.toFormat(\"yyyy-MM-dd HH:mm:ss\") }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c8eecd8-5325-4a8a-b505-c3f4ca585774",
+      "name": "Format Critical Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1488,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Your Slack channel ID (e.g., C12345678)__>"
+        },
+        "text": "={{ $('Format Critical Alert').item.json.alertMessage }}",
+        "otherOptions": {}
+      },
+      "id": "a7404def-1d47-4dd5-b34b-655deafcddbf",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1712,
+        208
+      ],
+      "webhookId": "c24b4c88-3757-409a-abab-2c924dac07e4"
+    },
+    {
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__admin@example.com__>",
+        "subject": "={{ $('Format Critical Alert').item.json.alertTitle }}",
+        "message": "={{ $('Format Critical Alert').item.json.alertMessage.replace(/\\n/g, \"<br>\").replace(/\\*/g, \"\") }}",
+        "options": {}
+      },
+      "id": "9d569066-eec6-47ef-ba9f-56f356f2e10b",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1936,
+        304
+      ],
+      "webhookId": "c969ac63-a33b-43ae-a72b-81caddd5ca5c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "DpugVP1MU4T3yZsm",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Your data table ID for storing analysis history__>"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "timestamp",
+              "keyValue": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $now.toISO() }}",
+            "summary": "={{ $('Linux Infrastructure AI Analyst').item.json.output.summary }}",
+            "criticalCount": "={{ $(\"Linux Infrastructure AI Analyst\").item.json.output.criticalIssues.length }}",
+            "warningCount": "={{ $(\"Linux Infrastructure AI Analyst\").item.json.output.warnings.length }}",
+            "actionRequired": "={{ $('Linux Infrastructure AI Analyst').item.json.output.actionRequired }}",
+            "fullReport": "={{ JSON.stringify($(\"Linux Infrastructure AI Analyst\").item.json.output) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "ba2514e0-df2e-46db-b080-f4a99aaff498",
+      "name": "Store Analysis History",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "reportTitle",
+              "value": "✅ Linux Infrastructure Health Report",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "reportMessage",
+              "value": "=*Infrastructure Health Report*\n\n*Summary:* {{ $json.output.summary }}\n\n*⚠️ Warnings:*\n{{ $json.output.warnings.length > 0 ? $json.output.warnings.join(\"\\n\") : \"No warnings\" }}\n\n*💡 Recommendations:*\n{{ $json.output.recommendations.join(\"\\n\") }}\n\n*Timestamp:* {{ $now.toFormat(\"yyyy-MM-dd HH:mm:ss\") }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a9fa6a25-b314-42c8-b1b5-1dce942e0a57",
+      "name": "Format Regular Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1712,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Your Slack channel ID (e.g., C12345678)__>"
+        },
+        "text": "={{ $('Format Regular Report').item.json.reportMessage }}",
+        "otherOptions": {}
+      },
+      "id": "12304ac2-81dd-4567-a34f-786010888b1e",
+      "name": "Send Regular Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1856,
+        656
+      ],
+      "webhookId": "eb8e0c54-b56c-45c9-baa6-51e38d0fb744"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Collect Server Data via Ansible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Server Data via Ansible": {
+      "main": [
+        [
+          {
+            "node": "Aggregate All Server Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate All Server Data": {
+      "main": [
+        [
+          {
+            "node": "Linux Infrastructure AI Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Linux Infrastructure AI Analyst": {
+      "main": [
+        [
+          {
+            "node": "Critical Issues Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Linux Infrastructure AI Analyst",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Linux Infrastructure AI Analyst",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Issues Found?": {
+      "main": [
+        [
+          {
+            "node": "Format Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Regular Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Critical Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        []
+      ]
+    },
+    "Send Email Alert": {
+      "main": [
+        [
+          {
+            "node": "Store Analysis History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Regular Report": {
+      "main": [
+        [
+          {
+            "node": "Store Analysis History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Regular Report": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3aa59102-3640-43dc-857c-6f7936a08750",
+  "meta": {
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "D2UpLPD693RR0NCr",
+  "tags": []
+}

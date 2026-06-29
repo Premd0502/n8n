@@ -1,0 +1,459 @@
+{
+  "name": "Infrastructure Automation Multi-Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "6105226b-f02f-4848-9e97-fb1c749b7c7f",
+      "name": "Start Infrastructure Planning",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Create a comprehensive server provisioning plan for a production infrastructure. Include server specifications, operating systems, network configuration, and security setup.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert infrastructure architect specializing in server provisioning. Create detailed, production-ready server provisioning plans that include hardware specs, OS selection, network topology, and security configurations. Consider scalability, redundancy, and best practices."
+        }
+      },
+      "id": "97625fd1-c33a-4bd3-9b84-f286f11ba347",
+      "name": "Server Provisioning Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "1a9aaad6-2dfe-4fb7-9f15-2562f363acad",
+      "name": "OpenAI GPT-5",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        416
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "servers": [
+            {
+              "name": "web-server-01",
+              "type": "application",
+              "specs": {
+                "cpu": "4 cores",
+                "ram": "16GB",
+                "storage": "500GB SSD"
+              },
+              "os": "Ubuntu 22.04 LTS",
+              "location": "us-east-1"
+            }
+          ],
+          "network": {
+            "vpc": "10.0.0.0/16",
+            "subnets": [
+              "10.0.1.0/24",
+              "10.0.2.0/24"
+            ]
+          },
+          "security": [
+            "firewall rules",
+            "ssh key setup"
+          ]
+        }
+      },
+      "id": "9a7d8bc4-a5d4-4bdd-872d-df6afacba1fc",
+      "name": "Provisioning Output Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        640,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "0a6ad7cb-7c7d-414e-abf6-da658e940f92",
+      "name": "Combine All Plans",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        816,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Design a comprehensive backup strategy for production infrastructure. Include backup schedules, retention policies, storage locations, and disaster recovery procedures.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert in data protection and disaster recovery. Design robust backup strategies that ensure data integrity, minimize recovery time objectives (RTO), and meet recovery point objectives (RPO). Include automated testing and validation procedures."
+        }
+      },
+      "id": "b8623cc9-5840-4970-843f-fe17fe3e4119",
+      "name": "Backup Strategy Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "strategy": "incremental",
+          "schedule": {
+            "full": "weekly",
+            "incremental": "daily",
+            "retention": "30 days"
+          },
+          "targets": [
+            "database",
+            "application files",
+            "configuration"
+          ],
+          "storage": {
+            "primary": "s3://backup-bucket",
+            "secondary": "glacier"
+          },
+          "testing": "monthly restore tests"
+        }
+      },
+      "id": "76066a49-1ce9-4f53-9098-62b60d904dd6",
+      "name": "Backup Output Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Create a monitoring setup plan using Nagios and Prometheus. Include metrics to track, alert configurations, dashboard designs, and integration strategies.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert in infrastructure monitoring and observability. Design comprehensive monitoring solutions using Nagios and Prometheus that provide real-time visibility, proactive alerting, and actionable insights. Focus on key performance indicators and SLA compliance."
+        }
+      },
+      "id": "b16f2e69-8e91-42cb-91b0-dd7f608d8619",
+      "name": "Monitoring Setup Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "tools": [
+            "Prometheus",
+            "Nagios"
+          ],
+          "metrics": [
+            "cpu",
+            "memory",
+            "disk",
+            "network",
+            "application health"
+          ],
+          "alerts": [
+            {
+              "name": "high-cpu",
+              "threshold": "80%",
+              "action": "email + slack"
+            }
+          ],
+          "dashboards": [
+            "system overview",
+            "application metrics"
+          ],
+          "retention": "90 days"
+        }
+      },
+      "id": "ba7544b8-5c42-4a2e-8ec5-c57d6c2344a7",
+      "name": "Monitoring Output Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Develop a capacity planning strategy for infrastructure growth. Include current utilization analysis, growth forecasts, scaling triggers, and resource recommendations.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert in infrastructure capacity planning and resource optimization. Analyze current usage patterns, forecast future needs, and provide data-driven recommendations for scaling. Consider cost optimization and performance requirements."
+        }
+      },
+      "id": "439b3f0d-ea04-42b2-bd57-27ec0daa20ef",
+      "name": "Capacity Planning Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "current": {
+            "servers": 5,
+            "cpu_usage": "45%",
+            "memory_usage": "60%",
+            "storage_usage": "70%"
+          },
+          "forecast": {
+            "period": "6 months",
+            "growth_rate": "15%",
+            "recommendations": [
+              "add 2 servers",
+              "upgrade storage"
+            ]
+          },
+          "scaling": {
+            "triggers": [
+              "cpu > 75%",
+              "memory > 80%"
+            ],
+            "actions": [
+              "horizontal scaling",
+              "vertical scaling"
+            ]
+          }
+        }
+      },
+      "id": "a6782081-9d4e-4c8d-b665-74fb4f674c6f",
+      "name": "Capacity Output Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "plan",
+              "name": "infrastructure_plan",
+              "type": "object",
+              "value": "={{ {\n  \"server_provisioning\": $(\"Server Provisioning Agent\").item.json.output,\n  \"backup_strategy\": $(\"Backup Strategy Agent\").item.json.output,\n  \"monitoring_setup\": $(\"Monitoring Setup Agent\").item.json.output,\n  \"capacity_planning\": $(\"Capacity Planning Agent\").item.json.output,\n  \"generated_at\": $now.toISO(),\n  \"summary\": \"Complete infrastructure automation plan with 4 specialized components\"\n} }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aabb505f-e523-4dd0-b1ea-d9dffd538b05",
+      "name": "Format Infrastructure Plan",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        912
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start Infrastructure Planning": {
+      "main": [
+        [
+          {
+            "node": "Server Provisioning Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Backup Strategy Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Monitoring Setup Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Capacity Planning Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Server Provisioning Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine All Plans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Server Provisioning Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Backup Strategy Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Monitoring Setup Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Capacity Planning Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provisioning Output Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Server Provisioning Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine All Plans": {
+      "main": [
+        [
+          {
+            "node": "Format Infrastructure Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup Strategy Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine All Plans",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Backup Output Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Backup Strategy Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monitoring Setup Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine All Plans",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Monitoring Output Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Monitoring Setup Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capacity Planning Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine All Plans",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Capacity Output Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Capacity Planning Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d86f2eea-d7dc-494b-b8ca-df876556079d",
+  "meta": {
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "OiIW7vgWi6PncuJD",
+  "tags": []
+}

@@ -1,0 +1,828 @@
+{
+  "name": "ISMS Audit Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "8b5cb210-d234-4ceb-8e62-2406554b876b",
+      "name": "Start ISMS Automation",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "iso27001_controls",
+        "columns": {
+          "column": [
+            {
+              "name": "controlId"
+            },
+            {
+              "name": "controlName"
+            },
+            {
+              "name": "status"
+            },
+            {
+              "name": "complianceLevel"
+            },
+            {
+              "name": "gaps"
+            },
+            {
+              "name": "recommendations"
+            },
+            {
+              "name": "evidenceRequired"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "a5fdb12b-21d6-4cfe-9a97-9f16d6f14f34",
+      "name": "Create ISO 27001 Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Analyze the organization's information security controls against ISO 27001 Annex A requirements. Assess each control's implementation status, identify gaps, and provide recommendations for achieving compliance.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an ISO 27001 compliance expert. Your role is to assess information security controls against the ISO 27001 standard. For each control, evaluate its implementation status (Not Implemented, Partially Implemented, Implemented, or Fully Implemented), identify any gaps, and provide specific recommendations. Return structured data with controlId, controlName, status, complianceLevel, gaps (array), recommendations (array), and evidenceRequired (array)."
+        }
+      },
+      "id": "c1f6ec62-53d3-45b4-9591-186d2948e111",
+      "name": "ISO 27001 Controls Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        720,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "ac708139-21b3-4ee5-8c0f-9b6a4eb25e71",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        688,
+        432
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"controlId\":\"A.5.1\",\"controlName\":\"Policies for information security\",\"status\":\"Implemented\",\"complianceLevel\":\"Full\",\"gaps\":[],\"recommendations\":[],\"evidenceRequired\":[]}"
+      },
+      "id": "51016f4b-2dc7-4f80-8034-e0064063f5ae",
+      "name": "ISO 27001 Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        816,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "iso27001_controls"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "controlId",
+              "keyValue": "={{ $json.output.controlId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "controlId": "={{ $json.output.controlId }}",
+            "controlName": "={{ $json.output.controlName }}",
+            "status": "={{ $json.output.status }}",
+            "complianceLevel": "={{ $json.output.complianceLevel }}",
+            "gaps": "={{ JSON.stringify($json.output.gaps) }}",
+            "recommendations": "={{ JSON.stringify($json.output.recommendations) }}",
+            "evidenceRequired": "={{ JSON.stringify($json.output.evidenceRequired) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "c9db73c2-3ce3-4304-9b9d-f7cd3654deae",
+      "name": "Store ISO 27001 Results",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "26a44e4d-542b-49cf-b1a9-26a733d87b0b",
+      "name": "Combine All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1408,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "risk_register",
+        "columns": {
+          "column": [
+            {
+              "name": "riskId"
+            },
+            {
+              "name": "riskName"
+            },
+            {
+              "name": "category"
+            },
+            {
+              "name": "likelihood"
+            },
+            {
+              "name": "impact"
+            },
+            {
+              "name": "riskLevel"
+            },
+            {
+              "name": "mitigation"
+            },
+            {
+              "name": "owner"
+            },
+            {
+              "name": "status"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "e0ec5218-5b11-4d7b-ab28-c13220212ed8",
+      "name": "Create Risk Register Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Identify and assess information security risks. Evaluate likelihood and impact, calculate risk levels, and recommend mitigation strategies.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a risk management specialist focused on information security. Identify potential risks to information assets, assess their likelihood (Low, Medium, High) and impact (Low, Medium, High, Critical), calculate the overall risk level, and recommend appropriate mitigation strategies. Assign risk owners and track status. Return structured data with riskId, riskName, category, likelihood, impact, riskLevel, mitigation, owner, and status."
+        }
+      },
+      "id": "dc52affc-8ead-41e0-a7c8-85f654b6a16d",
+      "name": "Risk Assessment Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        768,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"riskId\":\"RISK-001\",\"riskName\":\"Unauthorized access to sensitive data\",\"category\":\"Information Security\",\"likelihood\":\"Medium\",\"impact\":\"High\",\"riskLevel\":\"High\",\"mitigation\":\"Implement multi-factor authentication\",\"owner\":\"IT Security Team\",\"status\":\"Open\"}",
+        "autoFix": true
+      },
+      "id": "1f876a42-2a9f-4037-ac4b-cdb69745745a",
+      "name": "Risk Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "risk_register"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "riskId",
+              "keyValue": "={{ $json.output.riskId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "riskId": "={{ $json.output.riskId }}",
+            "riskName": "={{ $json.output.riskName }}",
+            "category": "={{ $json.output.category }}",
+            "likelihood": "={{ $json.output.likelihood }}",
+            "impact": "={{ $json.output.impact }}",
+            "riskLevel": "={{ $json.output.riskLevel }}",
+            "mitigation": "={{ $json.output.mitigation }}",
+            "owner": "={{ $json.output.owner }}",
+            "status": "={{ $json.output.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "74588127-dd29-4f1c-b6b4-752b4a5ec8a7",
+      "name": "Store Risk Assessment",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "compliance_reports",
+        "columns": {
+          "column": [
+            {
+              "name": "reportId"
+            },
+            {
+              "name": "reportDate"
+            },
+            {
+              "name": "framework"
+            },
+            {
+              "name": "overallStatus"
+            },
+            {
+              "name": "controlsAssessed",
+              "type": "number"
+            },
+            {
+              "name": "controlsCompliant",
+              "type": "number"
+            },
+            {
+              "name": "controlsPartial",
+              "type": "number"
+            },
+            {
+              "name": "controlsNonCompliant",
+              "type": "number"
+            },
+            {
+              "name": "findings"
+            },
+            {
+              "name": "actionItems"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "ca6ee3fd-62be-4ddf-be36-01d1ebd5ab15",
+      "name": "Create Compliance Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Generate comprehensive compliance reports for ISO 27001 and other frameworks. Summarize control assessments, identify findings, and create action items.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a compliance reporting specialist. Generate detailed compliance reports that summarize the organization's adherence to ISO 27001 and other security frameworks. Include overall compliance status, statistics on controls assessed, findings, and prioritized action items. Return structured data with reportId, reportDate, framework, overallStatus, controlsAssessed, controlsCompliant, controlsPartial, controlsNonCompliant, findings (array), and actionItems (array)."
+        }
+      },
+      "id": "6b9b5327-1b88-4818-bbb7-b35625717a51",
+      "name": "Compliance Reporting Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        768,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"reportId\":\"COMP-2024-Q1\",\"reportDate\":\"2024-01-31\",\"framework\":\"ISO 27001\",\"overallStatus\":\"Compliant\",\"controlsAssessed\":114,\"controlsCompliant\":98,\"controlsPartial\":12,\"controlsNonCompliant\":4,\"findings\":[],\"actionItems\":[]}",
+        "autoFix": true
+      },
+      "id": "3bf02e73-8cbf-4745-99d0-3b5221e52f3d",
+      "name": "Compliance Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "compliance_reports"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "reportId",
+              "keyValue": "={{ $json.output.reportId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reportId": "={{ $json.output.reportId }}",
+            "reportDate": "={{ $json.output.reportDate }}",
+            "framework": "={{ $json.output.framework }}",
+            "overallStatus": "={{ $json.output.overallStatus }}",
+            "controlsAssessed": "={{ $json.output.controlsAssessed }}",
+            "controlsCompliant": "={{ $json.output.controlsCompliant }}",
+            "controlsPartial": "={{ $json.output.controlsPartial }}",
+            "controlsNonCompliant": "={{ $json.output.controlsNonCompliant }}",
+            "findings": "={{ JSON.stringify($json.output.findings) }}",
+            "actionItems": "={{ JSON.stringify($json.output.actionItems) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "9577c39a-1fda-4336-ad43-6b93228d5a9e",
+      "name": "Store Compliance Report",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "evidence_tracking",
+        "columns": {
+          "column": [
+            {
+              "name": "evidenceId"
+            },
+            {
+              "name": "controlId"
+            },
+            {
+              "name": "evidenceType"
+            },
+            {
+              "name": "documentName"
+            },
+            {
+              "name": "dateCollected"
+            },
+            {
+              "name": "collectedBy"
+            },
+            {
+              "name": "location"
+            },
+            {
+              "name": "status"
+            },
+            {
+              "name": "notes"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "e7e440dc-11d6-485f-92ed-bdeb0f8fc390",
+      "name": "Create Evidence Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        464,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Track and manage audit evidence for compliance controls. Document evidence collection, verification status, and storage locations.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an audit evidence management specialist. Track all evidence collected for compliance controls, including policy documents, logs, screenshots, certificates, and records. Document the evidence type, collection date, collector, storage location, and verification status. Return structured data with evidenceId, controlId, evidenceType, documentName, dateCollected, collectedBy, location, status, and notes."
+        }
+      },
+      "id": "d8072c76-c3cd-4a50-add0-be0aa0a6f8d8",
+      "name": "Evidence Tracking Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        768,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"evidenceId\":\"EVD-001\",\"controlId\":\"A.5.1\",\"evidenceType\":\"Policy Document\",\"documentName\":\"Information Security Policy v2.1\",\"dateCollected\":\"2024-01-15\",\"collectedBy\":\"Audit Team\",\"location\":\"SharePoint/Policies\",\"status\":\"Verified\",\"notes\":\"\"}",
+        "autoFix": true
+      },
+      "id": "ea888b74-0007-48eb-ab2c-2b2be5fba971",
+      "name": "Evidence Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "evidence_tracking"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "evidenceId",
+              "keyValue": "={{ $json.output.evidenceId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "evidenceId": "={{ $json.output.evidenceId }}",
+            "controlId": "={{ $json.output.controlId }}",
+            "evidenceType": "={{ $json.output.evidenceType }}",
+            "documentName": "={{ $json.output.documentName }}",
+            "dateCollected": "={{ $json.output.dateCollected }}",
+            "collectedBy": "={{ $json.output.collectedBy }}",
+            "location": "={{ $json.output.location }}",
+            "status": "={{ $json.output.status }}",
+            "notes": "={{ $json.output.notes }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "6e748f65-ca7b-4670-af57-4d9af56f2969",
+      "name": "Store Evidence Records",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "message",
+              "value": "ISMS Automation Complete: All agents have processed data and stored results in their respective tables.",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "567b5b5f-2407-4a49-85c0-dce1a6ae9c30",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1632,
+        912
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start ISMS Automation": {
+      "main": [
+        [
+          {
+            "node": "Create ISO 27001 Table",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Risk Register Table",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Compliance Table",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Evidence Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create ISO 27001 Table": {
+      "main": [
+        [
+          {
+            "node": "ISO 27001 Controls Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ISO 27001 Controls Agent": {
+      "main": [
+        [
+          {
+            "node": "Store ISO 27001 Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ISO 27001 Controls Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Risk Assessment Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Compliance Reporting Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Evidence Tracking Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ISO 27001 Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "ISO 27001 Controls Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store ISO 27001 Results": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine All Results": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Risk Register Table": {
+      "main": [
+        [
+          {
+            "node": "Risk Assessment Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Assessment Agent": {
+      "main": [
+        [
+          {
+            "node": "Store Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Risk Assessment Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Risk Assessment": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Create Compliance Table": {
+      "main": [
+        [
+          {
+            "node": "Compliance Reporting Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compliance Reporting Agent": {
+      "main": [
+        [
+          {
+            "node": "Store Compliance Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compliance Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Compliance Reporting Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Compliance Report": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Create Evidence Table": {
+      "main": [
+        [
+          {
+            "node": "Evidence Tracking Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evidence Tracking Agent": {
+      "main": [
+        [
+          {
+            "node": "Store Evidence Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evidence Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Evidence Tracking Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Evidence Records": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "aa758e7e-2d10-41a2-85a1-ad86a2e28a52",
+  "meta": {
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "AMl6nbgqOffIgSNk",
+  "tags": []
+}

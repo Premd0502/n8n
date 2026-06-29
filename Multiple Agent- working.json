@@ -1,0 +1,236 @@
+{
+  "name": "Multiple Agent- working",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -48
+      ],
+      "id": "f44c726b-6562-40f1-8c4c-3f03b9b9c4fb",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "670c3aa2-cd6d-439a-8143-43e2ecdc61ca",
+              "name": "User Query",
+              "value": "I want to become a software engineer ",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -384,
+        -48
+      ],
+      "id": "65523d51-75f6-4091-9cdf-d81ebae13cb2",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        144
+      ],
+      "id": "a71f8e41-7faf-49c3-a30f-70d47c544f31",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LowNvdMuGCUnJclG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        176
+      ],
+      "id": "e5ddcd89-7118-43b0-b28c-338fcd76a021",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LowNvdMuGCUnJclG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        176
+      ],
+      "id": "e13bd9f4-3bd0-4d98-acac-79cfe25dd63b",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LowNvdMuGCUnJclG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Prepare a planner agent for {{ $json['User Query'] }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -192,
+        -48
+      ],
+      "id": "fe94c8d4-8417-457c-9fa5-a065adc8cf98",
+      "name": "Planner Agent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Create a Road Map for Particular Plan  {{ $json.output }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        112,
+        -48
+      ],
+      "id": "35c85a38-3940-4b16-a3ba-0a8a62a6aeb3",
+      "name": "RoadMap Agent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Create a Resource For {{ $json.output }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        416,
+        -48
+      ],
+      "id": "8f7698d5-05a0-476d-b220-ac314a45db6b",
+      "name": "Resource Agent"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Planner Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Planner Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RoadMap Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Resource Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Agent": {
+      "main": [
+        [
+          {
+            "node": "RoadMap Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RoadMap Agent": {
+      "main": [
+        [
+          {
+            "node": "Resource Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6bb665ce-5e19-4117-a826-c1a768b2da86",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "ffRRSMse4zu6ZQQs",
+  "tags": []
+}

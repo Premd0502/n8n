@@ -1,0 +1,231 @@
+{
+  "name": "ISO & ISMS Auditor Head Chief Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Welcome! I am your ISO and ISMS Auditor Head Chief assistant.\n\nI can help you with:\n• Security policies and controls mapping\n• ISO 27001/27002 control frameworks\n• IT infrastructure applicability analysis\n• Compliance requirements\n\nHow can I assist you today?",
+        "options": {
+          "inputPlaceholder": "Ask about security policies, controls, or compliance...",
+          "loadPreviousSession": "memory",
+          "showWelcomeScreen": true,
+          "getStarted": "Start Your Audit Consultation",
+          "subtitle": "Expert guidance on security policies, controls, and IT infrastructure compliance",
+          "title": "ISO & ISMS Auditor Assistant",
+          "responseMode": "streaming"
+        }
+      },
+      "id": "957ef3cd-26cf-4fe9-897a-4710bf78c169",
+      "name": "ISO ISMS Audit Chat",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        304
+      ],
+      "webhookId": "9d518bc6-f45f-4e41-8c0c-57e8f6a42f39"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "b4919aeb-4e6f-4173-b346-1867259e6fcc",
+      "name": "Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        192,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are an expert ISO and ISMS Auditor Head Chief with deep knowledge of:\n\n1. ISO/IEC 27001:2022 - Information Security Management Systems\n2. ISO/IEC 27002:2022 - Information Security Controls\n3. Security policy frameworks and governance\n4. IT infrastructure security controls\n5. Compliance and audit methodologies\n\nYour expertise includes:\n• Mapping security policies to specific ISO 27001/27002 controls\n• Identifying which controls apply to different IT infrastructure components (network, servers, applications, databases, cloud, endpoints)\n• Providing implementation guidance for controls\n• Explaining control objectives and requirements\n• Recommending policy structures and control frameworks\n\nWhen responding:\n1. Provide comprehensive, accurate information based on ISO 27001:2022 and ISO 27002:2022 standards\n2. Map policies to their related controls with specific control IDs\n3. Identify applicable IT infrastructure components for each control\n4. Include practical implementation guidance\n5. Use the structured output format to organize information clearly\n6. Be specific about control numbers (e.g., A.9.1.1, A.13.1.1) and their purposes\n7. Consider the full scope: organizational controls, people controls, physical controls, and technological controls\n\nAlways structure your response using the JSON schema provided, ensuring all relevant policies, controls, infrastructure mappings, and recommendations are included.",
+          "maxIterations": 15,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "5f504a82-237b-4faa-b641-2d12111a96de",
+      "name": "ISO ISMS Auditor Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        656,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "75866f11-027d-4207-b9e6-468b67344153",
+      "name": "OpenAI GPT-5 Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        512
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "8e84b6e1-21a8-4ac1-8a49-1a5672cf796b",
+      "name": "Agent Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        704,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": {
+          "summary": "Brief overview of the response",
+          "policies": [
+            {
+              "policyName": "Access Control Policy",
+              "policyId": "ACP-001",
+              "description": "Policy description",
+              "relatedISO27001Controls": [
+                "A.9.1.1",
+                "A.9.2.1"
+              ],
+              "relatedISO27002Controls": [
+                "5.15",
+                "5.16"
+              ]
+            }
+          ],
+          "controls": [
+            {
+              "controlId": "A.9.1.1",
+              "controlName": "Access control policy",
+              "framework": "ISO 27001:2022",
+              "description": "Control description",
+              "applicableInfrastructure": [
+                "Network",
+                "Servers",
+                "Applications",
+                "Databases"
+              ],
+              "implementationGuidance": "How to implement this control",
+              "relatedPolicies": [
+                "ACP-001"
+              ]
+            }
+          ],
+          "infrastructureMapping": [
+            {
+              "infrastructureComponent": "Network Infrastructure",
+              "applicableControls": [
+                "A.9.1.1",
+                "A.13.1.1"
+              ],
+              "applicablePolicies": [
+                "ACP-001",
+                "NWP-001"
+              ]
+            }
+          ],
+          "recommendations": [
+            "Specific recommendation based on the query"
+          ]
+        }
+      },
+      "id": "832a6324-74b6-4447-bcea-4616c98c7e26",
+      "name": "Structured Audit Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1056,
+        368
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "ISO ISMS Audit Chat": {
+      "main": [
+        [
+          {
+            "node": "ISO ISMS Auditor Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "ISO ISMS Audit Chat",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5 Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ISO ISMS Auditor Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "ISO ISMS Auditor Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Audit Output": {
+      "ai_outputParser": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "8af4cd90-dd1f-479a-8abf-30e01c7d3f4b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "uRC7huvQIdqNNQMT",
+  "tags": []
+}

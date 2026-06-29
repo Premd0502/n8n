@@ -1,0 +1,216 @@
+{
+  "name": "My workflow 3",
+  "nodes": [
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.1-flash-lite-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.1-flash-lite-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Yor are helpful technical mentor. Answer the User's Question clearly.\nUser Question:\nCreate a Linkdin Post for me the below topic.\n{{ $json.message.text }}\nDetails:\n1. Post Should be of 200 Words\n2. Add 4 Hash tags."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        -208
+      ],
+      "id": "2c93e806-3bd8-4c32-a694-d824827ac774",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LowNvdMuGCUnJclG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -544,
+        -80
+      ],
+      "id": "ad1f7adc-d699-4381-a13e-6bb7a64db23b",
+      "name": "Telegram Trigger",
+      "webhookId": "36ff5b08-b952-4931-be1e-e16d93391a6f",
+      "credentials": {
+        "telegramApi": {
+          "id": "JfN880W5iDcuJ28x",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.1-flash-lite-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.1-flash-lite-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Make the input in the tabuler formate \n Daily update "
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        -304,
+        -112
+      ],
+      "id": "881f4ce2-653c-4b0d-8c89-548cfb61eb42",
+      "name": "Message a model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LowNvdMuGCUnJclG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1kN8EdovaaOB4klhsJjx9BV0EWXC2cOy5nPajezUMjT0",
+          "mode": "list",
+          "cachedResultName": "Dailyupdate",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1kN8EdovaaOB4klhsJjx9BV0EWXC2cOy5nPajezUMjT0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1kN8EdovaaOB4klhsJjx9BV0EWXC2cOy5nPajezUMjT0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "finishReason",
+              "displayName": "finishReason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "index",
+              "displayName": "index",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "locationDefine": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        64,
+        -80
+      ],
+      "id": "a4b78055-0234-4e97-a52d-f4e3e3961446",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GIaKRHuwHSkTvzlL",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        []
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "43799354-ed16-4546-bd31-d39748fc7bc3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "yjB2uAZenrCvEXAU",
+  "tags": []
+}

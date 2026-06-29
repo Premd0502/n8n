@@ -1,0 +1,419 @@
+{
+  "name": "AI Technology Research & Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "ccce32a2-c6bb-4bc5-8a9e-4137538eae03",
+      "name": "Daily AI Research",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Return ONLY valid JSON.\nDo NOT include explanations, markdown, or extra fields.\nDo NOT wrap JSON in quotes or code blocks.\n\nExpected format:\n{\n  \"technologies\": [\n    {\n      \"name\": \"\",\n      \"category\": \"\",\n      \"description\": \"\",\n      \"releaseDate\": \"\",\n      \"keyFeatures\": [],\n      \"source\": \"\"\n    }\n  ],\n  \"summary\": \"\"\n}",
+        "hasOutputParser": true,
+        "needsFallback": true,
+        "options": {
+          "systemMessage": "You are an AI technology specialist and researcher. Your purpose is to identify and analyze the latest developments in artificial intelligence. You have access to the Perplexity Search tool to find current information about AI technologies. Always structure your findings in the exact JSON format specified by the output parser. Be thorough and accurate in your research.",
+          "maxIterations": 15
+        }
+      },
+      "id": "71c13680-5b59-4741-8622-ee8a82976fb9",
+      "name": "AI Technology Researcher",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        512,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "6f801c76-38f1-4f34-88ec-002de69f2a40",
+      "name": "OpenAI GPT-5",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        400,
+        560
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R0UZFlOQ5a6MsKNH",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"technologies\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": { \"type\": \"string\" },\n          \"category\": { \"type\": \"string\" },\n          \"description\": { \"type\": \"string\" },\n          \"releaseDate\": { \"type\": \"string\" },\n          \"keyFeatures\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" }\n          },\n          \"source\": { \"type\": \"string\" }\n        }\n      }\n    },\n    \"summary\": { \"type\": \"string\" }\n  }\n}"
+      },
+      "id": "e36f95e6-c044-49ca-96f7-ab28b0191dc6",
+      "name": "Structured Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "name",
+              "name": "Technology Name",
+              "value": "={{ $json.output.technologies[0].name }}",
+              "type": "string"
+            },
+            {
+              "id": "category",
+              "name": "Category",
+              "value": "={{ $json.output.technologies[0].category }}",
+              "type": "string"
+            },
+            {
+              "id": "description",
+              "name": "Description",
+              "value": "={{ $json.output.technologies[0].description }}",
+              "type": "string"
+            },
+            {
+              "id": "releaseDate",
+              "name": "Release Date",
+              "value": "={{ $json.output.technologies[0].releaseDate }}",
+              "type": "string"
+            },
+            {
+              "id": "keyFeatures",
+              "name": "Key Features",
+              "value": "={{ $json.output.technologies[0].keyFeatures.join(\", \") }}",
+              "type": "string"
+            },
+            {
+              "id": "source",
+              "name": "Source URL",
+              "value": "={{ $json.output.technologies[0].source }}",
+              "type": "string"
+            },
+            {
+              "id": "dateAdded",
+              "name": "Date Added",
+              "value": "={{ $now.toFormat(\"yyyy-MM-dd\") }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b5b5f848-e3b5-4390-af0d-4b6408c86d42",
+      "name": "Format for Sheets",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1182h9qFPx13wvB3qvVbJ6khc8Slx0Th6Obb_cL4VgIE",
+          "mode": "list",
+          "cachedResultName": "AI-Info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1182h9qFPx13wvB3qvVbJ6khc8Slx0Th6Obb_cL4VgIE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1182h9qFPx13wvB3qvVbJ6khc8Slx0Th6Obb_cL4VgIE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Technology Name": "={{ $json[\"Technology Name\"] }}",
+            "Category": "={{ $json.Category }}",
+            "Release Date": "={{ $json['Release Date'] }}",
+            "Key Features": "={{ $json['Key Features'] }}",
+            "Source URL": "={{ $json['Source URL'] }}",
+            "Date Added": "={{ $json['Date Added'] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Technology Name",
+              "displayName": "Technology Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Release Date",
+              "displayName": "Release Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Key Features",
+              "displayName": "Key Features",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Source URL",
+              "displayName": "Source URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date Added",
+              "displayName": "Date Added",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "4222917e-df5c-4eb1-aeb2-bc21e579c79f",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1152,
+        304
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GIaKRHuwHSkTvzlL",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "=🤖 *Latest AI Technologies Report*\n📅 {{ $now.toFormat(\"MMMM d, yyyy\") }}\n\n{{ $(\"AI Technology Researcher\").item.json.output.summary }}\n\n*Technologies Found:* {{ $(\"AI Technology Researcher\").item.json.output.technologies.length }}\n\n✅ Data saved to Google Sheets\n\n_Automated by n8n AI Agent_",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "68fd3ab7-5f65-4707-8661-b3840f675a67",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        496
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "chatId": "<__PLACEHOLDER_VALUE__Your Telegram Chat ID (ask @get_id_bot)__>",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "d0c7e848-3344-451f-9325-d3fb5bdbc037",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1152,
+        496
+      ],
+      "webhookId": "cae66da1-4cda-4bde-babd-d21f6c62ddb1",
+      "credentials": {
+        "telegramApi": {
+          "id": "JfN880W5iDcuJ28x",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        560
+      ],
+      "id": "f61d7787-ac9d-4ebb-9565-0154eb6fb44e",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LowNvdMuGCUnJclG",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily AI Research": {
+      "main": [
+        [
+          {
+            "node": "AI Technology Researcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Technology Researcher": {
+      "main": [
+        [
+          {
+            "node": "Format for Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Technology Researcher",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Technology Researcher",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for Sheets": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Technology Researcher",
+            "type": "ai_languageModel",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "ff486aaf-9d23-4c02-aed8-5ab47338f8a7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e8cdfc5633b51b0a596a2068ceea89bd6fa969d668231b99b80eb7b8420e02d7"
+  },
+  "nodeGroups": [],
+  "id": "xKS02Pl1JFd9KyFm",
+  "tags": []
+}
