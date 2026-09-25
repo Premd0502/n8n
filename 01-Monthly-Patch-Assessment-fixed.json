@@ -1,0 +1,492 @@
+{
+  "name": "01 - Monthly Patch Assessment",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 1 * *"
+            }
+          ]
+        }
+      },
+      "name": "Monthly Schedule (1st, 02:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -960,
+        160
+      ],
+      "id": "c96aa125-1e47-4b2a-8336-576d54aaaf4d",
+      "notes": "Runs once a month. Assessment only - never installs patches."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT server_id, hostname, ip_address, os, os_version, environment, criticality, ansible_server, patch_group FROM servers WHERE active = 1;",
+        "options": {}
+      },
+      "name": "Get Server Inventory (MySQL)",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        -720,
+        160
+      ],
+      "id": "9b32345d-cb25-4253-9361-89ae37fea32d",
+      "credentials": {
+        "mySql": {
+          "id": "Fv7QewFs9xD8Quxv",
+          "name": "Patch_Mgmt_mysql_login_user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split inventory by OS family and build the host lists each Ansible\n// control server needs. Never let a CentOS host reach the Ubuntu\n// playbook or vice versa.\nconst rows = items.map(i => i.json);\n\nconst centosOS = ['CentOS 6.10', 'CentOS 7.9', 'CentOS 8', 'Rocky 8', 'Rocky 9', 'AlmaLinux 8', 'AlmaLinux 9'];\nconst ubuntuOS  = ['Ubuntu 22.04', 'Ubuntu 24.04'];\n\nconst centos = [];\nconst ubuntu = [];\nconst unsupported = [];\n\nfor (const s of rows) {\n  const label = `${s.os} ${s.os_version}`.trim();\n  if (centosOS.some(o => label.includes(o.replace('CentOS ', '').replace('Rocky ', '').replace('AlmaLinux ', '')) && s.os.match(/CentOS|Rocky|Alma/i))) {\n    centos.push(s);\n  } else if (s.os.match(/Ubuntu/i) && ubuntuOS.some(o => label.includes(o.split(' ')[1]))) {\n    ubuntu.push(s);\n  } else {\n    unsupported.push({ ...s, status: 'UNSUPPORTED_OS' });\n  }\n}\n\nreturn [\n  { json: { group: 'centos', ansible_server: '172.16.3.64', hosts: centos } },\n  { json: { group: 'ubuntu', ansible_server: '172.16.16.108', hosts: ubuntu } },\n  { json: { group: 'unsupported', hosts: unsupported } }\n];"
+      },
+      "name": "Split by OS / Route to Ansible Server",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        160
+      ],
+      "id": "de7ed990-16b1-473b-9341-175b09038bda"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.group}}",
+              "rightValue": "centos",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "46a95803-2319-40e9-b7ac-0a7c2df6dd38"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is CentOS Branch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        64
+      ],
+      "id": "43fdd476-7deb-426c-ba7b-4a7d12f2f262"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.group}}",
+              "rightValue": "ubuntu",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "090cbfa5-9033-41be-9afa-efa1092b739c"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Ubuntu Branch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        288
+      ],
+      "id": "16b9ceaf-5f16-4497-97cd-e61bce86913f"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=source /opt/ansible/patch-db.env && \\\nsudo rm -f /opt/ansible/reports/json/*.json && \\\nsudo -E ansible-playbook \\\n/opt/ansible/playbooks/patch_assessment_centos.yml \\\n-i /opt/ansible/inventory/dynamic_hosts.py \\\n--extra-vars '{{ JSON.stringify({ target_hosts: $json.hosts.map(h => h.hostname), os_family: \"centos\" }) }}' && \\\necho \"===PATCH_REPORT_START===\" && \\\nsudo cat /opt/ansible/reports/json/centos_assessment_*.json && \\\necho \"===PATCH_REPORT_END===\""
+      },
+      "name": "Run CentOS Assessment (172.16.3.64)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1a8c8300-1f67-4ea8-a7e5-5e6704223a96",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "sixkMJYBXyBXXfIy",
+          "name": "SSH Private Key account"
+        }
+      },
+      "notes": "Wrapper playbook: gathers os-release/uname, yum/dnf check-update, security/critical package counts, reboot-required. Never runs 'yum update -y'."
+    },
+    {
+      "parameters": {},
+      "name": "Merge Assessment Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        240,
+        144
+      ],
+      "id": "6ef1d17c-3bf9-4f07-8ba6-344f225ffb2d"
+    },
+    {
+      "parameters": {
+        "jsCode": "const STATUS = {\n  COMPLIANT: 'COMPLIANT',\n  PATCH_AVAILABLE: 'PATCH_AVAILABLE',\n  SECURITY_PATCH_AVAILABLE: 'SECURITY_PATCH_AVAILABLE',\n  CRITICAL_PATCH_AVAILABLE: 'CRITICAL_PATCH_AVAILABLE',\n  UNREACHABLE: 'UNREACHABLE',\n  REPOSITORY_ERROR: 'REPOSITORY_ERROR',\n  INVENTORY_MISMATCH: 'INVENTORY_MISMATCH',\n  UNSUPPORTED_OS: 'UNSUPPORTED_OS'\n};\n\nconst normalized = [];\n\nfor (const item of items) {\n\n  const data = item.json || {};\n\n  const stdout = String(data.stdout || '');\n  const stderr = String(data.stderr || '');\n\n  // --------------------------------------------------\n  // 1. Detect Ansible command failure\n  // --------------------------------------------------\n\n  if (\n    stderr.includes('no such option') ||\n    stderr.includes('ERROR!') ||\n    stderr.includes('fatal:')\n  ) {\n    normalized.push({\n      hostname: 'unknown',\n      status: STATUS.UNREACHABLE,\n      error: stderr.trim().slice(0, 1000)\n    });\n\n    continue;\n  }\n\n  // --------------------------------------------------\n  // 2. Look for JSON report between markers\n  // --------------------------------------------------\n\n  const startMarker = '===PATCH_REPORT_START===';\n  const endMarker = '===PATCH_REPORT_END===';\n\n  const start = stdout.indexOf(startMarker);\n  const end = stdout.indexOf(endMarker);\n\n  if (start !== -1 && end !== -1 && end > start) {\n\n    const jsonText = stdout\n      .substring(start + startMarker.length, end)\n      .trim();\n\n    try {\n\n      const report = JSON.parse(jsonText);\n\n      const results =\n        report.hosts ||\n        report.results ||\n        (Array.isArray(report) ? report : [report]);\n\n      for (const r of results) {\n\n        if (!r || !r.hostname) {\n          continue;\n        }\n\n        let status = STATUS.COMPLIANT;\n\n        if ((Number(r.critical_updates) || 0) > 0) {\n          status = STATUS.CRITICAL_PATCH_AVAILABLE;\n        }\n        else if ((Number(r.security_updates) || 0) > 0) {\n          status = STATUS.SECURITY_PATCH_AVAILABLE;\n        }\n        else if ((Number(r.available_updates) || 0) > 0) {\n          status = STATUS.PATCH_AVAILABLE;\n        }\n\n        if (r.unreachable) {\n          status = STATUS.UNREACHABLE;\n        }\n        else if (r.repo_error) {\n          status = STATUS.REPOSITORY_ERROR;\n        }\n        else if (\n          r.detected_os &&\n          r.inventory_os &&\n          r.detected_os !== r.inventory_os\n        ) {\n          status = STATUS.INVENTORY_MISMATCH;\n        }\n\n        normalized.push({\n          hostname: r.hostname,\n          ip_address: r.ip_address || r.ansible_host || '',\n          os: r.os || '',\n          os_version: r.os_version || '',\n          kernel: r.kernel || '',\n          environment: r.environment || '',\n          criticality: r.criticality || '',\n          patch_group: r.patch_group || '',\n\n          available_updates:\n            Number(r.available_updates) || 0,\n\n          security_updates:\n            Number(r.security_updates) || 0,\n\n          critical_updates:\n            Number(r.critical_updates) || 0,\n\n          reboot_required:\n            Boolean(r.reboot_required),\n\n          status\n        });\n      }\n\n      continue;\n\n    } catch (e) {\n\n      normalized.push({\n        hostname: 'unknown',\n        status: STATUS.REPOSITORY_ERROR,\n        error: 'Unable to parse Ansible JSON report',\n        parse_error: e.message,\n        raw: jsonText.slice(0, 1000)\n      });\n\n      continue;\n    }\n  }\n\n  // --------------------------------------------------\n  // 3. If no JSON report was found\n  // --------------------------------------------------\n\n  const hostMatch = stdout.match(\n    /ok:\\s*\\[([^\\]]+)\\]/\n  );\n\n  normalized.push({\n    hostname: hostMatch ? hostMatch[1] : 'unknown',\n    status: STATUS.REPOSITORY_ERROR,\n    error: 'Ansible completed but JSON report was not found in stdout',\n    stdout: stdout.slice(-1500),\n    stderr: stderr.slice(-1000)\n  });\n}\n\nreturn normalized.map(r => ({\n  json: r\n}));"
+      },
+      "name": "Normalize Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        144
+      ],
+      "id": "87a74a28-33dc-4ea5-bf12-cdca58cbe655"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Roll normalized rows up into the monthly compliance summary.\nconst rows = items.map(i => i.json);\nconst total = rows.length;\n\nconst count = s => rows.filter(r => r.status === s).length;\nconst compliant = count('COMPLIANT');\n\nconst summary = {\n  patch_cycle: new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),\n  total_servers: total,\n  compliant_servers: compliant,\n  patch_available: count('PATCH_AVAILABLE'),\n  security_updates_available: count('SECURITY_PATCH_AVAILABLE'),\n  critical_updates_available: count('CRITICAL_PATCH_AVAILABLE'),\n  reboot_required: rows.filter(r => r.reboot_required).length,\n  unreachable_servers: count('UNREACHABLE'),\n  repository_errors: count('REPOSITORY_ERROR'),\n  inventory_mismatches: count('INVENTORY_MISMATCH'),\n  unsupported_os: count('UNSUPPORTED_OS'),\n  patch_compliance_percentage: total ? Math.round((compliant / total) * 1000) / 10 : 0,\n  servers: rows\n};\n\nreturn [{ json: summary }];"
+      },
+      "name": "Calculate Compliance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        144
+      ],
+      "id": "7dd7b7c7-9df5-4627-96ba-1ca0413f7619"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the HTML body for the monthly report email.\nconst s = items[0].json;\n\nconst rowsHtml = s.servers.map(r => `\n  <tr>\n    <td>${r.hostname || ''}</td>\n    <td>${r.os || ''} ${r.os_version || ''}</td>\n    <td>${r.status}</td>\n    <td>${r.available_updates ?? '-'}</td>\n    <td>${r.security_updates ?? '-'}</td>\n    <td>${r.critical_updates ?? '-'}</td>\n    <td>${r.reboot_required ? 'Yes' : 'No'}</td>\n  </tr>`).join('');\n\nconst html = `\n<html><body style=\"font-family:Arial,sans-serif;font-size:13px;\">\n  <h2>Linux Monthly Patch Management Report - ${s.patch_cycle}</h2>\n  <p><b>Overall Compliance: ${s.patch_compliance_percentage}%</b></p>\n  <table cellpadding=\"4\" cellspacing=\"0\" border=\"0\" style=\"margin-bottom:16px;\">\n    <tr><td>Total Servers</td><td>${s.total_servers}</td></tr>\n    <tr><td>Compliant</td><td>${s.compliant_servers}</td></tr>\n    <tr><td>Patch Available</td><td>${s.patch_available}</td></tr>\n    <tr><td>Security Patch Available</td><td>${s.security_updates_available}</td></tr>\n    <tr><td>Critical Patch Available</td><td>${s.critical_updates_available}</td></tr>\n    <tr><td>Reboot Required</td><td>${s.reboot_required}</td></tr>\n    <tr><td>Unreachable</td><td>${s.unreachable_servers}</td></tr>\n    <tr><td>Repository Errors</td><td>${s.repository_errors}</td></tr>\n    <tr><td>Inventory Mismatches</td><td>${s.inventory_mismatches}</td></tr>\n    <tr><td>Unsupported OS</td><td>${s.unsupported_os}</td></tr>\n  </table>\n  <table cellpadding=\"6\" cellspacing=\"0\" border=\"1\" style=\"border-collapse:collapse;width:100%;\">\n    <tr style=\"background:#f0f0f0;\">\n      <th>Hostname</th><th>OS</th><th>Status</th><th>Available</th><th>Security</th><th>Critical</th><th>Reboot Req.</th>\n    </tr>\n    ${rowsHtml}\n  </table>\n</body></html>`;\n\nreturn [{ json: { ...s, html_report: html, email_subject: `Linux Monthly Patch Status - ${s.patch_cycle} - ${s.patch_compliance_percentage}% Compliance` } }];"
+      },
+      "name": "Generate HTML Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        144
+      ],
+      "id": "435726c2-df60-419e-ac6c-b07033e4b13b"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO linux_patch.patch_cycle\n(\n    month,\n    year,\n    total_servers,\n    compliant_servers,\n    patch_available,\n    security_updates_available,\n    critical_updates,\n    patched,\n    failed,\n    unreachable,\n    repository_errors,\n    compliance_percentage\n)\nVALUES\n(\n    '{{$json.patch_cycle.split(' ')[0]}}',\n    {{$json.patch_cycle.split(' ')[1]}},\n    {{$json.total_servers}},\n    {{$json.compliant_servers}},\n    {{$json.patch_available}},\n    {{$json.security_updates_available || 0}},\n    {{$json.critical_updates_available || 0}},\n    {{$json.patched || 0}},\n    {{$json.failed || 0}},\n    {{$json.unreachable_servers || 0}},\n    {{$json.repository_errors || 0}},\n    {{$json.patch_compliance_percentage || 0}}\n)\nON DUPLICATE KEY UPDATE\n    total_servers = VALUES(total_servers),\n    compliant_servers = VALUES(compliant_servers),\n    patch_available = VALUES(patch_available),\n    security_updates_available = VALUES(security_updates_available),\n    critical_updates = VALUES(critical_updates),\n    patched = VALUES(patched),\n    failed = VALUES(failed),\n    unreachable = VALUES(unreachable),\n    repository_errors = VALUES(repository_errors),\n    compliance_percentage = VALUES(compliance_percentage);",
+        "options": {}
+      },
+      "name": "Store Evidence (MySQL)",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1200,
+        80
+      ],
+      "id": "d1e2d48d-e60d-49b3-b1db-6dd302f540f9",
+      "credentials": {
+        "mySql": {
+          "id": "bIGCtu6qKybqx4fI",
+          "name": "MySQL account 2"
+        }
+      },
+      "notes": "Assessment-only evidence for the ISMS record. patch_assessment (per-server, per-package rows) is populated by Workflow 2/3, not here."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.critical_updates_available}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "id": "ca5ba8a4-6a2b-44be-824f-5404e00ef576"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Any Critical Updates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        400
+      ],
+      "id": "674831a5-bbe2-4b3e-8aa2-a14d02eb507b"
+    },
+    {
+      "parameters": {
+        "fromEmail": "systems@ninestars.in",
+        "toEmail": "prem.d@ninestars.in",
+        "subject": "=CRITICAL: {{$json.critical_updates_available}} server(s) need critical patches - {{$json.patch_cycle}}",
+        "html": "=<p>{{$json.critical_updates_available}} server(s) are flagged CRITICAL_PATCH_AVAILABLE this cycle. See the monthly report for details, or run Workflow 02 - Vulnerability Package Scan against the specific package/CVE.</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Send Critical Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1440,
+        400
+      ],
+      "id": "e07bfdc4-84b3-45ee-a188-38af33c355ef",
+      "webhookId": "2490f698-81fd-4403-a9db-7416ed95f775",
+      "credentials": {
+        "smtp": {
+          "id": "9yvxPiapH6IiMSKY",
+          "name": "SMTP account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=source /opt/ansible/patch-db.env && \\\nsudo -E ansible-playbook \\\n/opt/ansible/playbooks/patch_assessment_ubuntu.yml \\\n-i /opt/ansible/inventory/dynamic_hosts.py \\\n--extra-vars '{{ JSON.stringify({ target_hosts: $json.hosts.map(h => h.hostname), os_family: \"ubuntu\" }) }}' && \\\necho \"===PATCH_REPORT_START===\" && \\\nsudo cat /opt/ansible/reports/json/ubuntu_assessment_*.json && \\\necho \"===PATCH_REPORT_END===\""
+      },
+      "name": "Run Ubuntu Assessment (172.16.16.108)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        0,
+        288
+      ],
+      "id": "dfbb8929-7a23-4cf1-866a-9d0e44e6b058",
+      "credentials": {
+        "sshPassword": {
+          "id": "J2sFT6WpmzrSRr8j",
+          "name": "Tracker_Ansible"
+        }
+      },
+      "notes": "Wrapper playbook: apt-get update, apt list --upgradable, unattended-upgrades --dry-run for security, /var/run/reboot-required check. Never runs 'apt upgrade -y'."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "json",
+        "options": {},
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: { subject: $json.email_subject, body: { contentType: \"HTML\", content: $json.html_report }, toRecipients: [ { emailAddress: { address: \"prem.d@ninestars.in\" } } ] }, saveToSentItems: true } }}"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1216,
+        240
+      ],
+      "id": "9076df8b-f7f9-4dec-8a82-a46027e7df83",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Monthly Schedule (1st, 02:00)": {
+      "main": [
+        [
+          {
+            "node": "Get Server Inventory (MySQL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Server Inventory (MySQL)": {
+      "main": [
+        [
+          {
+            "node": "Split by OS / Route to Ansible Server",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split by OS / Route to Ansible Server": {
+      "main": [
+        [
+          {
+            "node": "Is CentOS Branch?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Ubuntu Branch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is CentOS Branch?": {
+      "main": [
+        [
+          {
+            "node": "Run CentOS Assessment (172.16.3.64)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Ubuntu Branch?": {
+      "main": [
+        [
+          {
+            "node": "Run Ubuntu Assessment (172.16.16.108)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run CentOS Assessment (172.16.3.64)": {
+      "main": [
+        [
+          {
+            "node": "Merge Assessment Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Assessment Results": {
+      "main": [
+        [
+          {
+            "node": "Normalize Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Results": {
+      "main": [
+        [
+          {
+            "node": "Calculate Compliance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Compliance": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Store Evidence (MySQL)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Any Critical Updates?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Critical Updates?": {
+      "main": [
+        [
+          {
+            "node": "Send Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Ubuntu Assessment (172.16.16.108)": {
+      "main": [
+        [
+          {
+            "node": "Merge Assessment Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7ca1f176-d6f1-4e69-9574-3cc2cf41b7f2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "8hxdHQTyFyOZW9XD",
+  "tags": []
+}
