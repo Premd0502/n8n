@@ -1,0 +1,264 @@
+{
+  "name": "Graylog Critical & Warning Analyzer (Fixed + Email) -Chennai-26",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 9
+            },
+            {}
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        144
+      ],
+      "id": "a2edb87f-fd73-45ba-a641-ba55d307c7fb"
+    },
+    {
+      "parameters": {
+        "url": "http://172.16.16.110:9000/api/search/universal/relative",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Basic YWRtaW46cmVkaGF0QDkq"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Requested-By",
+              "value": "n8n"
+            }
+          ]
+        },
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "query",
+              "value": "*"
+            },
+            {
+              "name": "range",
+              "value": "7200"
+            }
+          ]
+        }
+      },
+      "name": "Fetch Graylog Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        64
+      ],
+      "id": "7e330595-5239-467c-b7db-52c5619a6aa3"
+    },
+    {
+      "parameters": {
+        "functionCode": "const messages = $json.messages || [];\n\nreturn messages\n  .map(m => {\n    const msg = m.message;\n    const level = msg.level || 0;\n    const text = (msg.message || \"\").toLowerCase();\n\n    let severity = null;\n\n    // Existing severity logic\n    if (level >= 4) {\n      severity = 'CRITICAL';\n    } else if (level === 3) {\n      severity = 'WARNING';\n    }\n\n    // Authentication detection\n    let authStatus = null;\n\n    if (\n      text.includes('failed password') ||\n      text.includes('authentication failure') ||\n      text.includes('invalid user') ||\n      text.includes('login failed')\n    ) {\n      authStatus = 'AUTH_FAIL';\n    } \n    else if (\n      text.includes('accepted password') ||\n      text.includes('login successful') ||\n      text.includes('session opened') ||\n      text.includes('authentication succeeded')\n    ) {\n      authStatus = 'AUTH_SUCCESS';\n    }\n\n    // Only pass CRITICAL, WARNING, or AUTH logs\n    if (!severity && !authStatus) return null;\n\n    return {\n      json: {\n        timestamp: msg.timestamp,\n        host: msg.source || 'unknown',\n        level,\n        severity: severity || authStatus,\n        auth_status: authStatus || null,\n        message: msg.message\n      }\n    };\n  })\n  .filter(Boolean);"
+      },
+      "name": "Parse & Filter Severity",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        128,
+        272
+      ],
+      "id": "39535767-4f51-4a10-b99c-bb84194eae9b"
+    },
+    {
+      "parameters": {
+        "functionCode": "const grouped = {};\n\nitems.forEach(i => {\n  const host = i.json.host;\n  const severity = i.json.severity;\n  const authStatus = i.json.auth_status || 'NONE';\n\n  // Create grouping key including auth status\n  const key = `${host}-${severity}-${authStatus}`;\n\n  if (!grouped[key]) {\n    grouped[key] = {\n      host,\n      severity,\n      auth_status: authStatus !== 'NONE' ? authStatus : null,\n      count: 0,\n      messages: []\n    };\n  }\n\n  grouped[key].count++;\n  grouped[key].messages.push(i.json.message);\n});\n\nreturn Object.values(grouped).map(i => ({ json: i }));"
+      },
+      "name": "Aggregate Logs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        304,
+        80
+      ],
+      "id": "2ecb8bb2-a4ae-4777-85f5-6bf84dcdbfbb"
+    },
+    {
+      "parameters": {
+        "functionCode": "let html = `<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse; font-family:Arial; font-size:12px;\">\n<tr style=\"background:#f2f2f2\">\n<th>Host</th>\n<th>Severity</th>\n<th>Auth Status</th>\n<th>Count</th>\n<th>Sample Messages</th>\n</tr>`;\n\nitems.forEach(i => {\n\n  let color = 'black';\n\n  if (i.json.severity === 'CRITICAL') {\n    color = 'red';\n  } else if (i.json.severity === 'WARNING') {\n    color = 'orange';\n  } else if (i.json.auth_status === 'AUTH_FAIL') {\n    color = 'darkred';\n  } else if (i.json.auth_status === 'AUTH_SUCCESS') {\n    color = 'green';\n  }\n\n  html += `<tr>\n<td>${i.json.host}</td>\n<td style=\"color:${color}; font-weight:bold;\">${i.json.severity}</td>\n<td>${i.json.auth_status || '-'}</td>\n<td>${i.json.count}</td>\n<td style=\"max-width:500px; word-wrap:break-word;\">\n${i.json.messages.slice(0,5).join('<br>')}\n</td>\n</tr>`;\n});\n\nhtml += `</table>`;\n\nreturn [{ json: { html } }];"
+      },
+      "name": "Generate HTML Table",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        496,
+        288
+      ],
+      "id": "2e9619bc-4576-4492-929f-e51b1894f175"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    graphBody: {\n      message: {\n        subject: 'Graylog Alert Report - Critical / Warning / Authentication Logs',\n        body: {\n          contentType: 'HTML',\n          content: `\n            <p>Dear IT Team,</p>\n\n            <p>Please find below the <b>Graylog Alert Summary</b>:</p>\n\n            <ul>\n              <li><b>CRITICAL</b> – High priority system issues</li>\n              <li><b>WARNING</b> – Potential issues</li>\n              <li><b>AUTH_FAIL</b> – Failed login attempts (Security risk)</li>\n              <li><b>AUTH_SUCCESS</b> – Successful login events</li>\n            </ul>\n\n            ${$json.html}\n\n            <br>\n            <p><b>Note:</b> Multiple authentication failures may indicate a brute-force attempt. Kindly review immediately.</p>\n\n            <p>Regards,<br>\n            IT Team<br>\n            Ninestars Information Technologies Pvt Ltd</p>\n          `\n        },\n        toRecipients: [\n          {\n            emailAddress: {\n              address: 'prem.d@ninestars.in'\n            }\n          }\n        ]\n      },\n      saveToSentItems: true\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        80
+      ],
+      "id": "a795b5c4-52e6-4800-a754-372cf5994207",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={{ JSON.stringify($json.graphBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        976,
+        144
+      ],
+      "id": "5df96fed-af12-467c-882b-f182e448fbdf",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={{ JSON.stringify($json.graphBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        816,
+        320
+      ],
+      "id": "57f285ec-8cd9-46ca-abda-13481b5e63f7",
+      "name": "HTTP Request1",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Graylog Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Graylog Logs": {
+      "main": [
+        [
+          {
+            "node": "Parse & Filter Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Filter Severity": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Logs": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Table": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "ce0a76e6-4eaa-4ac3-8f8e-cbbf8ec50c9d",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "xLG157URkMq4oy8y",
+  "tags": []
+}

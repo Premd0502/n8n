@@ -1,0 +1,252 @@
+{
+  "name": "ITAMS Asset Change Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "044175af-538e-4f06-a507-4bdb1be79fb5",
+      "name": "Schedule - Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -336,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS n8n_workflow_state (workflow_name VARCHAR(100) NOT NULL, last_audit_id BIGINT UNSIGNED NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (workflow_name));\nINSERT INTO n8n_workflow_state (workflow_name,last_audit_id) VALUES ('ITAMS_ASSET_CHANGE_TRACKER',0) ON DUPLICATE KEY UPDATE workflow_name=workflow_name;\nSELECT last_audit_id FROM n8n_workflow_state WHERE workflow_name='ITAMS_ASSET_CHANGE_TRACKER';",
+        "options": {}
+      },
+      "id": "44cd6e6b-4d4b-4b58-9ef2-309d22564d5a",
+      "name": "Get Last Processed Audit ID",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        224,
+        -160
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "l0cX4UpkS0CCi58P",
+          "name": "itams_db_account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.Au_id,a.Au_ActionDate,a.Au_Description,a.Au_TaskName,a.Au_Category,a.Au_UserID,u.u_name,u.u_loginid,u.u_email FROM audit_log a LEFT JOIN user_info u ON a.Au_UserID=u.u_id WHERE a.Au_id > {{ $json.last_audit_id }} AND a.Au_TaskName IN ('MetaEntry','Meta Entry','MetaEdit','Meta Edit','MetaData Entry','MetaData Edit','Meta Delete') ORDER BY a.Au_id ASC;",
+        "options": {}
+      },
+      "id": "1b86bbd1-a350-4788-8d00-8bb4907dd006",
+      "name": "Get New Asset Audit Events",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        432,
+        -160
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "l0cX4UpkS0CCi58P",
+          "name": "itams_db_account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\n\nfor (const item of items) {\n  const r = item.json;\n  const task = String(r.Au_TaskName || '').trim();\n  const description = String(r.Au_Description || '');\n\n  let changeType = 'UNKNOWN';\n\n  if (['MetaEntry','Meta Entry','MetaData Entry'].includes(task)) changeType = 'NEW';\n  else if (['MetaEdit','Meta Edit','MetaData Edit'].includes(task)) changeType = 'MODIFIED';\n  else if (task === 'Meta Delete') changeType = 'DELETED';\n\n  const match = description.match(/\\bNITL-[A-Za-z0-9-]+\\b/i);\n  const assetId = match ? match[0].toUpperCase() : null;\n\n  if (!assetId || changeType === 'UNKNOWN') continue;\n\n  out.push({json: {\n    audit_id: Number(r.Au_id),\n    change_date: r.Au_ActionDate,\n    change_month: r.Au_ActionDate ? new Date(r.Au_ActionDate).toLocaleString('en-US', {month:'long', year:'numeric'}) : '',\n    asset_id: assetId,\n    change_type: changeType,\n    user_id: r.Au_UserID ?? null,\n    username: r.u_name ?? '',\n    login_id: r.u_loginid ?? '',\n    email: r.u_email ?? '',\n    task_name: task,\n    description,\n    category: r.Au_Category ?? ''\n  }});\n}\n\nreturn out;"
+      },
+      "id": "f14457d6-e9d2-4b51-a537-fe10aabe9167",
+      "name": "Classify Asset Changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO n8n_asset_change_tracker\n(\n    audit_id,\n    asset_id,\n    change_type,\n    change_date,\n    user_id,\n    username,\n    task_name,\n    description,\n    category\n)\nVALUES\n(\n    {{ $json.audit_id }},\n    '{{ String($json.asset_id || '').replace(/'/g,\"''\") }}',\n    '{{ String($json.change_type || '').replace(/'/g,\"''\") }}',\n    '{{ $json.change_date }}',\n    {{ $json.user_id ?? 'NULL' }},\n    '{{ String($json.username || '').replace(/'/g,\"''\") }}',\n    '{{ String($json.task_name || '').replace(/'/g,\"''\") }}',\n    '{{ String($json.description || '').replace(/'/g,\"''\") }}',\n    '{{ String($json.category || '').replace(/'/g,\"''\") }}'\n)\nON DUPLICATE KEY UPDATE\n    audit_id = audit_id;",
+        "options": {}
+      },
+      "id": "6d35478c-0ca4-4aaf-a776-2a2302599366",
+      "name": "Insert Asset Change",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        832,
+        -160
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "l0cX4UpkS0CCi58P",
+          "name": "itams_db_account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE n8n_workflow_state\nSET last_audit_id = {{\n  Math.max(\n    ...$('Get New Asset Audit Events')\n      .all()\n      .map(item => Number(item.json.Au_id))\n      .filter(id => Number.isFinite(id))\n  )\n}}\nWHERE workflow_name = 'ITAMS_ASSET_CHANGE_TRACKER';",
+        "options": {}
+      },
+      "id": "6202ecec-dde7-4445-a824-06fbf55e3c7f",
+      "name": "Update Last Processed ID",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        1024,
+        -160
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "l0cX4UpkS0CCi58P",
+          "name": "itams_db_account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS n8n_asset_change_tracker (\n    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n    audit_id BIGINT UNSIGNED NOT NULL,\n    asset_id VARCHAR(100) NULL,\n    asset_name VARCHAR(255) NULL,\n    asset_type VARCHAR(100) NULL,\n    hostname VARCHAR(255) NULL,\n    serial_no VARCHAR(255) NULL,\n    change_type VARCHAR(50) NOT NULL,\n    changed_field VARCHAR(100) NULL,\n    old_value TEXT NULL,\n    new_value TEXT NULL,\n    change_date DATETIME NOT NULL,\n    user_id INT NULL,\n    username VARCHAR(100) NULL,\n    login_id VARCHAR(100) NULL,\n    task_name VARCHAR(100) NULL,\n    description TEXT NULL,\n    category VARCHAR(255) NULL,\n    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    PRIMARY KEY (id),\n    UNIQUE KEY uk_audit_id (audit_id),\n    KEY idx_asset_id (asset_id),\n    KEY idx_change_date (change_date),\n    KEY idx_change_type (change_type)\n);",
+        "options": {}
+      },
+      "id": "6e1c58a7-4954-4c22-ac52-53033f1de81c",
+      "name": "Ensure Change Tracker Table",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        16,
+        -144
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "l0cX4UpkS0CCi58P",
+          "name": "itams_db_account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "includeTime": false,
+        "options": {
+          "includeInputFields": true,
+          "timezone": "Asia/Kolkata"
+        }
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -144
+      ],
+      "id": "cfdf8a0f-9fe8-4a47-bc79-bbe94aecd280",
+      "name": "Date & Time"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule - Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Date & Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Last Processed Audit ID": {
+      "main": [
+        [
+          {
+            "node": "Get New Asset Audit Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get New Asset Audit Events": {
+      "main": [
+        [
+          {
+            "node": "Classify Asset Changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Asset Changes": {
+      "main": [
+        [
+          {
+            "node": "Insert Asset Change",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Asset Change": {
+      "main": [
+        [
+          {
+            "node": "Update Last Processed ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Change Tracker Table": {
+      "main": [
+        [
+          {
+            "node": "Get Last Processed Audit ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "main": [
+        [
+          {
+            "node": "Ensure Change Tracker Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "dc9f9e63-4c1c-4d1b-a50e-7d7bd42da506",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "YiznC48w2vwgpHI3",
+  "tags": []
+}

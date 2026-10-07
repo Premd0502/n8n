@@ -1,0 +1,180 @@
+{
+  "name": "NLNZ_Kanchi_Linux Disk Utilization - 90% Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "ba1a63b1-2680-431d-9cf4-0a2b2059a859",
+      "name": "Every 1 Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1472,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = String($json.stdout ?? '');\nconst THRESHOLD = 90;\nconst alerts = [];\nconst checked = [];\n\nlet currentHost = 'Unknown host';\n\nconst ignored = new Set([\n  'tmpfs','devtmpfs','efivarfs','squashfs','overlay','proc','sysfs',\n  'cgroup','cgroup2','pstore','debugfs','securityfs','tracefs',\n  'configfs','fusectl','hugetlbfs','mqueue','ramfs','autofs','binfmt_misc'\n]);\n\nfor (const raw of output.split(/\\r?\\n/)) {\n  const line = raw.trim();\n  if (!line) continue;\n\n  const host = line.match(/^(.+?)\\s+\\|\\s+(?:CHANGED|SUCCESS|FAILED|UNREACHABLE)\\s+\\|/i);\n  if (host) {\n    currentHost = host[1].trim();\n    continue;\n  }\n\n  if (line.startsWith('[WARNING]')) continue;\n\n  // df -hP:\n  // Filesystem Size Used Avail Use% Mounted_on\n  const m = line.match(/^(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\d+)%\\s+(.+)$/);\n  if (!m) continue;\n\n  const filesystem = m[1];\n  const percent = Number(m[5]);\n  const mountpoint = m[6];\n\n  if (!Number.isFinite(percent)) continue;\n  if (ignored.has(filesystem.toLowerCase())) continue;\n  if (/^(proc|sysfs|cgroup|cgroup2|pstore|debugfs|securityfs|tracefs|configfs|fusectl|hugetlbfs|mqueue|ramfs|autofs|binfmt_misc)/i.test(filesystem)) continue;\n\n  const row = {\n    host: currentHost,\n    filesystem,\n    size: m[2],\n    used: m[3],\n    available: m[4],\n    usage_percent: percent,\n    mountpoint\n  };\n\n  checked.push(row);\n  if (percent >= THRESHOLD) alerts.push(row);\n}\n\nconst esc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');\n\nconst status = alerts.length ? 'CRITICAL' : 'HEALTHY';\n\nconst rows = alerts.length\n  ? alerts.map((r,i) => `<tr>\n<td style=\"padding:8px;border:1px solid #ddd\">${i+1}</td>\n<td style=\"padding:8px;border:1px solid #ddd\">${esc(r.host)}</td>\n<td style=\"padding:8px;border:1px solid #ddd;font-family:monospace\">${esc(r.filesystem)}</td>\n<td style=\"padding:8px;border:1px solid #ddd\">${esc(r.mountpoint)}</td>\n<td style=\"padding:8px;border:1px solid #ddd\">${esc(r.size)}</td>\n<td style=\"padding:8px;border:1px solid #ddd\">${esc(r.used)}</td>\n<td style=\"padding:8px;border:1px solid #ddd\">${esc(r.available)}</td>\n<td style=\"padding:8px;border:1px solid #ddd\"><b>${r.usage_percent}%</b></td>\n</tr>`).join('')\n  : `<tr><td colspan=\"8\" style=\"padding:10px;border:1px solid #ddd\">No filesystem has reached ${THRESHOLD}%.</td></tr>`;\n\nconst html = `<!DOCTYPE html>\n<html><body style=\"font-family:Arial;background:#f5f6f8;padding:20px\">\n<table width=\"100%\" style=\"max-width:1000px;margin:auto;background:#fff;border:1px solid #ddd;border-collapse:collapse\">\n<tr><td style=\"padding:20px;background:#1f2937;color:white\">\n<h2>Linux Disk Utilization Alert</h2>\n<p>Ansible / df -hP monitoring report</p>\n</td></tr>\n<tr><td style=\"padding:20px\">\n<p>Dear IT Team,</p>\n<table width=\"100%\" style=\"border-collapse:collapse\">\n<tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Report Time</b></td><td style=\"padding:8px;border:1px solid #ddd\">${esc(new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}))}</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Threshold</b></td><td style=\"padding:8px;border:1px solid #ddd\">${THRESHOLD}%</td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Status</b></td><td style=\"padding:8px;border:1px solid #ddd\"><b>${status}</b></td></tr>\n<tr><td style=\"padding:8px;border:1px solid #ddd\"><b>Filesystems >= ${THRESHOLD}%</b></td><td style=\"padding:8px;border:1px solid #ddd\"><b>${alerts.length}</b></td></tr>\n</table>\n<h3>Disk Space Alerts</h3>\n<table width=\"100%\" style=\"border-collapse:collapse\">\n<tr style=\"background:#dc2626;color:white\">\n<th>#</th><th>Server</th><th>Filesystem</th><th>Mount</th><th>Size</th><th>Used</th><th>Available</th><th>Use%</th>\n</tr>${rows}</table>\n<p><b>Action Required:</b> Investigate any filesystem at or above ${THRESHOLD}% utilization.</p>\n<p>Regards,<br><b>IT Team</b><br>Ninestars Information Technologies Pvt Ltd</p>\n</td></tr></table>\n</body></html>`;\n\nreturn [{\n  json: {\n    status,\n    threshold: THRESHOLD,\n    alert_count: alerts.length,\n    alerts,\n    checked_filesystems: checked.length,\n    graphBody: {\n      message: {\n        subject: `Linux Disk Alert - ${status} - ${alerts.length} filesystem(s) >= ${THRESHOLD}%`,\n        body: { contentType: 'HTML', content: html },\n        toRecipients: [{emailAddress: {address: 'prem.d@ninestars.in'}}]\n      },\n      saveToSentItems: true\n    }\n  }\n}];"
+      },
+      "id": "f5690cfc-9dc4-409a-9581-6617648b0f92",
+      "name": "Analyze Disk Usage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "disk-alert-condition",
+              "leftValue": "={{ $json.alert_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "62e576fc-5102-41ce-ab7e-2406ff1c8436",
+      "name": "Disk >= 90%?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -816,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "command": "sudo docker exec ansible ansible kanchiicp -a \"df -h\""
+      },
+      "id": "e40d727f-1b8d-4622-b6dc-c32ed119313e",
+      "name": "Ansible",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1232,
+        -144
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "J2sFT6WpmzrSRr8j",
+          "name": "Tracker_Ansible"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={\n  \"message\": {\n    \"subject\": \"Linux Server Disk Utilization Alert - {{$json.alerts[0].host}}\",\n    \"body\": {\n      \"contentType\": \"HTML\",\n      \"content\": \"<h2>Linux Server Disk Utilization Alert</h2><table border=\\\"1\\\" cellpadding=\\\"8\\\" cellspacing=\\\"0\\\" style=\\\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif;\\\"><tr><th>Status</th><th>Hostname</th><th>Mount Point</th><th>Available</th><th>Usage %</th></tr><tr><td><b>{{ $json.status }}</b></td><td>{{$json.alerts[0].host}}</td><td>{{$json.alerts[0].mountpoint}}</td><td>{{$json.alerts[0].available}}</td><td><b>{{$json.alerts[0].usage_percent}}%</b></td></tr></table><br><p><b>Alert Threshold:</b> {{$json.threshold}}%</p><p><b>Conclusion:</b> {{$json.alerts[0].conclusion}}</p><p><b>Recommended Action:</b> {{$json.alerts[0].solution}}</p>\"\n    },\n    \"toRecipients\": [\n      {\n        \"emailAddress\": {\n          \"address\": \"prem.d@ninestars.in\"\n        }\n      }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -544,
+        -160
+      ],
+      "id": "59ef4a47-7992-4ca2-af53-80b337faa3a0",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Analyze Disk Usage": {
+      "main": [
+        [
+          {
+            "node": "Disk >= 90%?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Disk >= 90%?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ansible": {
+      "main": [
+        [
+          {
+            "node": "Analyze Disk Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 1 Hour": {
+      "main": [
+        [
+          {
+            "node": "Ansible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3cabd96c-0b0a-4da3-a7a6-fcc08e709d95",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "yhLT3GcdjXr1zFTs",
+  "tags": []
+}

@@ -1,0 +1,562 @@
+{
+  "name": "Linux_Servers_Secure_logs_monitoring_final",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "2dbd9169-7e16-4d1d-83b9-2080937f4803",
+      "name": "Schedule - Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2240,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\nconst seen = new Set();\n\n/*\n===========================================================\nIPv4 validation\n===========================================================\n*/\nfunction validIPv4(ip) {\n    const p = String(ip || '').trim().split('.');\n\n    if (p.length !== 4) {\n        return false;\n    }\n\n    return p.every(x =>\n        /^\\d+$/.test(x) &&\n        Number(x) >= 0 &&\n        Number(x) <= 255\n    );\n}\n\n\n/*\n===========================================================\nExtract IP\n===========================================================\n*/\nfunction extractIP(text) {\n\n    const ips = String(text || '').match(\n        /(?:\\d{1,3}\\.){3}\\d{1,3}/g\n    ) || [];\n\n    for (let i = ips.length - 1; i >= 0; i--) {\n\n        if (validIPv4(ips[i])) {\n            return ips[i];\n        }\n    }\n\n    return '';\n}\n\n\n/*\n===========================================================\nExtract username\n===========================================================\n*/\nfunction extractUsername(line) {\n\n    let m;\n\n    /*\n    Accepted password for user\n    */\n    m = line.match(\n        /Accepted\\s+\\S+\\s+for\\s+(\\S+)\\s+from\\s+/i\n    );\n\n    if (m) {\n        return m[1];\n    }\n\n\n    /*\n    Failed password for user\n    */\n    m = line.match(\n        /Failed\\s+password\\s+for\\s+(\\S+)\\s+from\\s+/i\n    );\n\n    if (m) {\n        return m[1];\n    }\n\n\n    /*\n    Failed password for invalid user\n    */\n    m = line.match(\n        /Failed\\s+password\\s+for\\s+invalid\\s+user\\s+(\\S+)\\s+from\\s+/i\n    );\n\n    if (m) {\n        return m[1];\n    }\n\n\n    /*\n    Invalid user\n    */\n    m = line.match(\n        /Invalid\\s+user\\s+(\\S+)\\s+from\\s+/i\n    );\n\n    if (m) {\n        return m[1];\n    }\n\n\n    /*\n    PAM authentication failure\n    */\n    m = line.match(\n        /\\buser=(\\S+)/i\n    );\n\n    if (m) {\n        return m[1];\n    }\n\n    return '';\n}\n\n\n/*\n===========================================================\nExtract source port\n===========================================================\n*/\nfunction extractPort(line) {\n\n    const m = line.match(\n        /\\bport\\s+(\\d+)\\b/i\n    );\n\n    return m ? Number(m[1]) : null;\n}\n\n\n/*\n===========================================================\nClassify SSH event\n===========================================================\n*/\nfunction classifyEvent(line) {\n\n    if (\n        /sshd.*Accepted\\s+password/i.test(line) ||\n        /sshd.*Accepted\\s+publickey/i.test(line) ||\n        /sshd.*Accepted\\s+keyboard-interactive/i.test(line)\n    ) {\n        return 'SSH_LOGIN_SUCCESS';\n    }\n\n    if (/sshd.*Failed\\s+password/i.test(line)) {\n        return 'SSH_FAILED_PASSWORD';\n    }\n\n    if (/sshd.*Invalid\\s+user/i.test(line)) {\n        return 'SSH_INVALID_USER';\n    }\n\n    if (/sshd.*authentication\\s+failure/i.test(line)) {\n        return 'SSH_AUTH_FAILURE';\n    }\n\n    return 'SSH_OTHER';\n}\n\n\n/*\n===========================================================\nExtract EVENT_EPOCH\n===========================================================\n*/\nfunction extractEpoch(text) {\n\n    const m = String(text || '').match(\n        /EVENT_EPOCH=(\\d+)/i\n    );\n\n    if (!m) {\n        return null;\n    }\n\n    const value = Number(m[1]);\n\n    return Number.isFinite(value)\n        ? value\n        : null;\n}\n\n\n/*\n===========================================================\nExtract SOURCE_IP from SECURITY_EVENT metadata\n===========================================================\n*/\nfunction extractSourceIP(text) {\n\n    const m = String(text || '').match(\n        /SOURCE_IP=([^|]+)/i\n    );\n\n    if (m) {\n        const ip = m[1].trim();\n\n        if (validIPv4(ip)) {\n            return ip;\n        }\n    }\n\n    return extractIP(text);\n}\n\n\n/*\n===========================================================\nExtract LOG_FILE\n===========================================================\n*/\nfunction extractLogFile(text) {\n\n    const m = String(text || '').match(\n        /LOG_FILE=([^|]+)$/i\n    );\n\n    return m\n        ? m[1].trim()\n        : '/var/log/secure';\n}\n\n\n/*\n===========================================================\nClean SECURITY_EVENT metadata\n===========================================================\n*/\nfunction cleanLogLine(text) {\n\n    return String(text || '')\n        .replace(/\\|SOURCE_IP=[^|]+/i, '')\n        .replace(/\\|EVENT_EPOCH=\\d+/i, '')\n        .replace(/\\|LOG_FILE=.*$/i, '')\n        .trim();\n}\n\n\n/*\n===========================================================\nExtract Ansible hostname\n===========================================================\n*/\nfunction extractHost(line) {\n\n    const m = String(line || '').match(\n        /^([^\\s|]+)\\s+\\|\\s+(SUCCESS|CHANGED|FAILED|UNREACHABLE!?)/i\n    );\n\n    return m\n        ? m[1]\n        : '';\n}\n\n\n/*\n===========================================================\nPROCESS ITEMS\n===========================================================\n*/\nfor (const item of items) {\n\n    const data = item.json || {};\n\n    let stdout = String(data.stdout || '');\n\n    const stderr = String(data.stderr || '');\n\n    const ansibleCode = data.code ?? null;\n\n\n    /*\n    -------------------------------------------------------\n    Important:\n    Convert literal \\n into real newlines too.\n    This handles cases where Ansible output is escaped.\n    -------------------------------------------------------\n    */\n    stdout = stdout\n        .replace(/\\\\r\\\\n/g, '\\n')\n        .replace(/\\\\n/g, '\\n')\n        .replace(/\\\\r/g, '\\r');\n\n\n    /*\n    -------------------------------------------------------\n    Current Ansible host\n    -------------------------------------------------------\n    */\n    let currentHost = 'unknown';\n\n\n    /*\n    -------------------------------------------------------\n    Split stdout\n    -------------------------------------------------------\n    */\n    const lines = stdout.split(/\\r?\\n/);\n\n\n    for (const raw of lines) {\n\n        const line = raw.trim();\n\n        if (!line) {\n            continue;\n        }\n\n\n        /*\n        ---------------------------------------------------\n        Detect Ansible hostname\n        ---------------------------------------------------\n        */\n        const host = extractHost(line);\n\n        if (host) {\n            currentHost = host;\n        }\n\n\n        /*\n        ---------------------------------------------------\n        Find SECURITY_EVENT\n        ---------------------------------------------------\n        */\n        const marker = 'SECURITY_EVENT|';\n\n        const position = line.indexOf(marker);\n\n        if (position === -1) {\n            continue;\n        }\n\n\n        /*\n        ---------------------------------------------------\n        Extract event payload\n        ---------------------------------------------------\n        */\n        const eventText =\n            line.substring(position + marker.length).trim();\n\n\n        if (!eventText) {\n            continue;\n        }\n\n\n        /*\n        ---------------------------------------------------\n        Source IP\n        ---------------------------------------------------\n        */\n        const sourceIP =\n            extractSourceIP(eventText);\n\n\n        /*\n        IMPORTANT:\n        DO NOT reject private IP here.\n\n        This node is only PARSING.\n        Filtering will happen in the next node.\n        ---------------------------------------------------\n        */\n        if (!validIPv4(sourceIP)) {\n            continue;\n        }\n\n\n        /*\n        ---------------------------------------------------\n        Epoch\n        ---------------------------------------------------\n        */\n        const epoch =\n            extractEpoch(eventText);\n\n\n        /*\n        ---------------------------------------------------\n        Original log\n        ---------------------------------------------------\n        */\n        const logLine =\n            cleanLogLine(eventText);\n\n\n        if (!logLine) {\n            continue;\n        }\n\n\n        /*\n        ---------------------------------------------------\n        Event type\n        ---------------------------------------------------\n        */\n        const eventType =\n            classifyEvent(logLine);\n\n\n        /*\n        ---------------------------------------------------\n        Username\n        ---------------------------------------------------\n        */\n        const username =\n            extractUsername(logLine);\n\n\n        /*\n        ---------------------------------------------------\n        Source port\n        ---------------------------------------------------\n        */\n        const sourcePort =\n            extractPort(logLine);\n\n\n        /*\n        ---------------------------------------------------\n        Log timestamp\n        ---------------------------------------------------\n        */\n        const logTime =\n            logLine.substring(0, 15);\n\n\n        /*\n        ---------------------------------------------------\n        Log file\n        ---------------------------------------------------\n        */\n        const logFile =\n            extractLogFile(eventText);\n\n\n        /*\n        ---------------------------------------------------\n        Deduplication\n        ---------------------------------------------------\n        */\n        const key = [\n            currentHost,\n            epoch || '',\n            sourceIP,\n            username,\n            eventType,\n            sourcePort || '',\n            logLine\n        ].join('|');\n\n\n        if (seen.has(key)) {\n            continue;\n        }\n\n        seen.add(key);\n\n\n        /*\n        ---------------------------------------------------\n        OUTPUT\n        ---------------------------------------------------\n        */\n        output.push({\n            json: {\n\n                hostname:\n                    currentHost,\n\n                event_type:\n                    eventType,\n\n                source_ip:\n                    sourceIP,\n\n                username:\n                    username,\n\n                log_time:\n                    logTime,\n\n                event_epoch:\n                    epoch,\n\n                log_file:\n                    logFile,\n\n                log_line:\n                    logLine,\n\n                raw_log:\n                    logLine,\n\n                source_port:\n                    sourcePort,\n\n                destination_port:\n                    22,\n\n                target_service:\n                    'SSH',\n\n                ansible_rc:\n                    ansibleCode,\n\n                ansible_stderr:\n                    stderr\n            }\n        });\n    }\n}\n\n\n/*\n===========================================================\nSort chronologically\n===========================================================\n*/\noutput.sort((a, b) => {\n\n    return Number(a.json.event_epoch || 0) -\n           Number(b.json.event_epoch || 0);\n\n});\n\n\nreturn output;"
+      },
+      "id": "a5d14719-cbbd-4fec-beb0-dc82ea9adaee",
+      "name": "Parse Ansible Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst seen = new Set();\nconst out = [];\n\nfor (const item of items) {\n  const r = item.json || {};\n  if (!r.source_ip || !r.event_epoch) continue;\n\n  const key = [\n    r.hostname || '',\n    r.event_epoch || '',\n    r.event_type || '',\n    r.source_ip || '',\n    r.username || '',\n    r.log_line || ''\n  ].join('|');\n\n  if (seen.has(key)) continue;\n  seen.add(key);\n\n  out.push({\n    json: {\n      ...r,\n      source_ip: String(r.source_ip).trim(),\n      event_type: r.event_type || 'SSH_SECURITY_EVENT',\n      target_service: 'SSH',\n      destination_port: 22\n    }\n  });\n}\n\nreturn out;\n"
+      },
+      "id": "66b10d25-5445-4897-aeb5-a8a1cae11cf9",
+      "name": "Normalize and Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ips=[...new Set(items.map(i=>i.json.source_ip).filter(Boolean))]; return [{json:{ips,has_events:ips.length>0}}];"
+      },
+      "id": "12d1ad25-dafb-4b4c-bd85-b816e6d5564d",
+      "name": "Build Unique IP List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.has_events}}",
+              "operation": "isTrue"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ff3159be-ac7a-4e5e-be28-69badee14528",
+      "name": "Any Events?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -816,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ips=$json.ips||[],b=[]; for(let i=0;i<ips.length;i+=100)b.push({json:{geo_request:ips.slice(i,i+100).map(ip=>({query:ip}))}}); return b;"
+      },
+      "id": "eb31862b-a969-42c7-bdd4-f3085e2d74a1",
+      "name": "Build GeoIP Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ip-api.com/batch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.geo_request) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "9e482c2a-b17f-4077-84b1-349434af7310",
+      "name": "GeoIP Lookup - IP API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -304,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const geo=[]; for(const i of items){if(Array.isArray(i.json))geo.push(...i.json); else if(Array.isArray(i.json.data))geo.push(...i.json.data);} return [{json:{geo_results:geo}}];"
+      },
+      "id": "0f8ebbab-3079-4031-b48f-fcfbe17ce9c7",
+      "name": "Flatten GeoIP Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst geo = $json.geo_results || [];\nconst map = new Map(\n  geo.map(g => [\n    g.query,\n    {\n      country: g.country || 'Unknown',\n      country_code: g.countryCode || '',\n      region: g.regionName || '',\n      city: g.city || '',\n      isp: g.isp || '',\n      organization: g.org || ''\n    }\n  ])\n);\n\n// Private / reserved ranges: RFC1918, loopback, link-local, CGNAT.\n// A failed login from one of these is an internal user, not an external attacker.\nconst isPrivate = ip =>\n  /^(0\\.|10\\.|127\\.|169\\.254\\.|192\\.168\\.|100\\.(6[4-9]|[7-9]\\d|1[01]\\d|12[0-7])\\.|172\\.(1[6-9]|2\\d|3[01])\\.)/.test(String(ip || ''));\n\nconst out = [];\n\nfor (const item of $('Normalize and Deduplicate').all()) {\n  const r = item.json;\n\n  // Only genuine external/public-IP login attempts are security events worth storing.\n  if (isPrivate(r.source_ip)) continue;\n\n  const g = map.get(r.source_ip) || {};\n\n  // If GeoIP explicitly identifies India, exclude it.\n  // If the GeoIP service returns no country, retain the event rather than silently losing a security event.\n  if (String(g.country_code || '').toUpperCase() === 'IN') continue;\n\n  const severity =\n    ['SSH_FAILED_PASSWORD', 'SSH_INVALID_USER', 'SSH_AUTH_FAILURE'].includes(r.event_type)\n      ? 'HIGH'\n      : 'MEDIUM';\n\n  out.push({\n    json: {\n      ...r,\n      ...g,\n      country: g.country || 'Unknown',\n      country_code: g.country_code || '',\n      is_non_india: String(g.country_code || '').toUpperCase() !== 'IN',\n      detected_at: new Date().toISOString(),\n      destination_port: 22,\n      target_service: 'SSH',\n      alert_severity: severity\n    }\n  });\n}\n\nreturn out;\n"
+      },
+      "id": "d685fcf6-5cda-49ed-8865-ba55b4d5b13e",
+      "name": "Keep Non-India Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = items.map(i => i.json);\nif (!rows.length) return [];\n\nconst esc = v => String(v ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;');\n\nconst html =\n  '<html><body>' +\n  '<h2>Chennai /var/log/secure - Non-India SSH Security Report</h2>' +\n  '<p><b>Monitoring window:</b> Last 5 days</p>' +\n  '<p><b>Events detected:</b> ' + rows.length + '</p>' +\n  '<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\">' +\n  '<tr><th>Server</th><th>Event Time</th><th>Log File</th><th>Source IP</th><th>Country</th><th>City</th><th>Event</th><th>User</th><th>Source Port</th><th>Severity</th><th>Log</th></tr>' +\n  rows.map(r =>\n    '<tr>' +\n    '<td>' + esc(r.hostname) + '</td>' +\n    '<td>' + esc(r.event_epoch ? new Date(Number(r.event_epoch) * 1000).toISOString() : r.log_time) + '</td>' +\n    '<td>' + esc(r.log_file) + '</td>' +\n    '<td>' + esc(r.source_ip) + '</td>' +\n    '<td>' + esc(r.country) + '</td>' +\n    '<td>' + esc(r.city) + '</td>' +\n    '<td>' + esc(r.event_type) + '</td>' +\n    '<td>' + esc(r.username) + '</td>' +\n    '<td>' + esc(r.source_port) + '</td>' +\n    '<td>' + esc(r.alert_severity) + '</td>' +\n    '<td>' + esc(r.raw_log) + '</td>' +\n    '</tr>'\n  ).join('') +\n  '</table></body></html>';\n\nreturn [{\n  json: {\n    event_count: rows.length,\n    monitoring_window_days: 5,\n    events: rows,\n    html\n  }\n}];\n"
+      },
+      "id": "80003ea6-988b-42d0-a640-611016494c95",
+      "name": "Create Security Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "USE patch_inventory;\nCREATE TABLE IF NOT EXISTS n8n_external_auth_monitor (\nid BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\nevent_hash CHAR(64) NOT NULL,\nhostname VARCHAR(255) NOT NULL,\nevent_time DATETIME NULL,\nlog_time VARCHAR(32),\nlog_file VARCHAR(255),\ndetected_at DATETIME NOT NULL,\nsource_ip VARCHAR(45) NOT NULL,\ncountry VARCHAR(100),\ncountry_code VARCHAR(10),\ncity VARCHAR(100),\nisp VARCHAR(255),\norganization VARCHAR(255),\nevent_type VARCHAR(100),\nprocess_name VARCHAR(100),\nusername VARCHAR(255),\nsource_port INT,\ndestination_port INT,\nseverity VARCHAR(20),\nraw_log TEXT,\ncreated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\nPRIMARY KEY(id),\nUNIQUE KEY uk_event_hash(event_hash),\nKEY idx_source_ip(source_ip),\nKEY idx_event_time(event_time),\nKEY idx_detected_at(detected_at),\nKEY idx_country(country),\nKEY idx_hostname(hostname),\nKEY idx_event_type(event_type)\n);",
+        "options": {}
+      },
+      "id": "7e08e015-1a43-49f6-9b65-410d62788f5f",
+      "name": "Ensure Security Event Table",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        656,
+        -32
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "Fv7QewFs9xD8Quxv",
+          "name": "Patch_Mgmt_mysql_login_user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $('Create Security Report').first().json;\n\nconst events = Array.isArray(report.events)\n    ? report.events\n    : [];\n\n/*\n * ---------------------------------------------------------\n * 32-bit hash function\n * ---------------------------------------------------------\n * Used only as a deterministic event fingerprint.\n * This does NOT provide cryptographic security.\n * It is suitable for duplicate-event detection.\n * ---------------------------------------------------------\n */\nfunction hash32(str, seed) {\n\n    let h = seed >>> 0;\n\n    for (let i = 0; i < str.length; i++) {\n\n        h ^= str.charCodeAt(i);\n\n        h = Math.imul(h, 16777619) >>> 0;\n\n        h ^= h >>> 13;\n        h = Math.imul(h, 2246822519) >>> 0;\n        h ^= h >>> 16;\n    }\n\n    return h.toString(16).padStart(8, '0');\n}\n\n\n/*\n * ---------------------------------------------------------\n * Generate 64-character fingerprint\n * ---------------------------------------------------------\n */\nfunction createFingerprint(value) {\n\n    const seeds = [\n        2166136261,\n        3432918353,\n        123456789,\n        362436069,\n        521288629,\n        88675123,\n        5783321,\n        6615241\n    ];\n\n    return seeds\n        .map(seed => hash32(value, seed))\n        .join('');\n}\n\n\n/*\n * ---------------------------------------------------------\n * Process events\n * ---------------------------------------------------------\n */\n\nconst output = [];\nconst seen = new Set();\n\nfor (const event of events) {\n\n    const r = event || {};\n\n    /*\n     * Build a stable event key.\n     *\n     * Do NOT include detected_at because that changes\n     * every workflow execution and would create duplicates.\n     */\n\n    const fingerprintSource = [\n        String(r.hostname || '').trim(),\n        String(r.event_epoch || '').trim(),\n        String(r.source_ip || '').trim(),\n        String(r.source_port || '').trim(),\n        String(r.destination_port || '').trim(),\n        String(r.event_type || '').trim(),\n        String(r.username || '').trim(),\n        String(r.log_file || '').trim(),\n        String(r.log_line || '').trim()\n    ].join('|');\n\n\n    /*\n     * Generate fingerprint\n     */\n\n    const eventHash = createFingerprint(fingerprintSource);\n\n\n    /*\n     * Prevent duplicates inside the same execution\n     */\n\n    if (seen.has(eventHash)) {\n        continue;\n    }\n\n    seen.add(eventHash);\n\n\n    /*\n     * Return original event + fingerprint\n     */\n\n    output.push({\n        json: {\n            ...r,\n\n            event_hash: eventHash,\n\n            fingerprint_source: fingerprintSource\n        }\n    });\n}\n\n\n/*\n * ---------------------------------------------------------\n * Return results\n * ---------------------------------------------------------\n */\n\nreturn output;"
+      },
+      "id": "cec785f8-15b8-4ea7-87ce-02dcbfe8d2ef",
+      "name": "Create Event Fingerprints",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO n8n_external_auth_monitor\n(\n    event_hash,\n    hostname,\n    event_time,\n    log_time,\n    login_type,\n    detected_at,\n    source_ip,\n    country,\n    country_code,\n    city,\n    isp,\n    organization,\n    event_type,\n    process_name,\n    username,\n    source_port,\n    destination_port,\n    severity,\n    raw_log\n)\nVALUES\n(\n    '{{ String($json.event_hash || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.hostname || \"\").replace(/'/g,\"''\") }}',\n\n    {{ $json.event_epoch\n        ? 'FROM_UNIXTIME(' + Number($json.event_epoch) + ')'\n        : 'NULL'\n    }},\n\n    '{{ String($json.log_time || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.target_service || \"SSH\").replace(/'/g,\"''\") }}',\n\n    {{ $json.detected_at\n        ? \"STR_TO_DATE('\" +\n          String($json.detected_at)\n            .replace(/'/g,\"''\")\n            .replace('T',' ')\n            .replace('Z','')\n            .substring(0,19) +\n          \"','%Y-%m-%d %H:%i:%s')\"\n        : 'NULL'\n    }},\n\n    '{{ String($json.source_ip || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.country || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.country_code || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.city || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.isp || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.organization || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.event_type || \"\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.target_service || \"SSH\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.username || \"\").replace(/'/g,\"''\") }}',\n\n    {{ $json.source_port == null ? 'NULL' : Number($json.source_port) }},\n\n    {{ $json.destination_port == null ? '22' : Number($json.destination_port) }},\n\n    '{{ String($json.alert_severity || \"MEDIUM\").replace(/'/g,\"''\") }}',\n\n    '{{ String($json.raw_log || \"\").replace(/'/g,\"''\") }}'\n)\nON DUPLICATE KEY UPDATE\n    event_hash = VALUES(event_hash);",
+        "options": {}
+      },
+      "id": "dae5cd4c-8b28-4c04-8be9-d00f0456af4a",
+      "name": "Store Security Event",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        1168,
+        304
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "Fv7QewFs9xD8Quxv",
+          "name": "Patch_Mgmt_mysql_login_user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// SSH SECURITY INCIDENT SUMMARY\n// One incident per unique Source IP\n// Multiple events from the same IP = ONE incident\n// Multiple different IPs = Multiple incidents\n// ============================================================\n\n// Get all SSH events\nconst eventItems = $('Create Event Fingerprints1').all();\n\n// Get all GeoIP results\nconst geoItems = $('GeoIP Lookup - IP API').all();\n\n\n// ------------------------------------------------------------\n// Build GeoIP map\n// IP-API normally returns the IP in \"query\"\n// ------------------------------------------------------------\nconst geoMap = new Map();\n\nfor (const item of geoItems) {\n    const geo = item.json || {};\n\n    const ip =\n        geo.query ||\n        geo.ip ||\n        geo.source_ip ||\n        '';\n\n    if (ip) {\n        geoMap.set(String(ip).trim(), geo);\n    }\n}\n\n\n// ------------------------------------------------------------\n// Keep only ONE event per Source IP\n// ------------------------------------------------------------\nconst uniqueIPs = new Map();\n\nfor (const item of eventItems) {\n\n    const event = item.json || {};\n\n    const sourceIP = String(event.source_ip || '').trim();\n\n    // Ignore events without source IP\n    if (!sourceIP) {\n        continue;\n    }\n\n    // If this IP already exists, skip it\n    if (uniqueIPs.has(sourceIP)) {\n        continue;\n    }\n\n    // --------------------------------------------------------\n    // Get GeoIP information for this IP\n    // --------------------------------------------------------\n    const geo = geoMap.get(sourceIP) || {};\n\n    const country =\n        geo.country ||\n        event.country ||\n        '';\n\n    const countryCode =\n        geo.countryCode ||\n        event.countryCode ||\n        '';\n\n    const region =\n        geo.region ||\n        event.region ||\n        '';\n\n    const regionName =\n        geo.regionName ||\n        event.regionName ||\n        '';\n\n    const city =\n        geo.city ||\n        event.city ||\n        '';\n\n    const isp =\n        geo.isp ||\n        event.isp ||\n        '';\n\n    const organization =\n        geo.organization ||\n        event.organization ||\n        '';\n\n\n    // --------------------------------------------------------\n    // Determine whether source is outside India\n    // --------------------------------------------------------\n    const isNonIndia =\n        countryCode.toUpperCase() !== 'IN';\n\n\n    // --------------------------------------------------------\n    // Store ONE incident for this IP\n    // --------------------------------------------------------\n    uniqueIPs.set(sourceIP, {\n\n        hostname: event.hostname || '',\n\n        event_type:\n            event.event_type ||\n            'SSH_SECURITY_EVENT',\n\n        source_ip: sourceIP,\n\n        username:\n            event.username ||\n            '',\n\n        log_time:\n            event.log_time ||\n            '',\n\n        log_line:\n            event.log_line ||\n            '',\n\n        is_non_india: isNonIndia,\n\n        alert_severity:\n            event.alert_severity ||\n            'HIGH',\n\n        country: country,\n\n        countryCode: countryCode,\n\n        region: region,\n\n        regionName: regionName,\n\n        city: city,\n\n        isp: isp,\n\n        organization: organization\n    });\n}\n\n\n// ------------------------------------------------------------\n// Convert Map to array\n// ------------------------------------------------------------\nconst incidents = Array.from(uniqueIPs.values());\n\n\n// ------------------------------------------------------------\n// IMPORTANT:\n// Show only NON-INDIA incidents\n// ------------------------------------------------------------\nconst nonIndiaIncidents = incidents.filter(\n    incident => incident.is_non_india === true\n);\n\n\n// ------------------------------------------------------------\n// Return ONE n8n item containing all unique IP incidents\n// ------------------------------------------------------------\nreturn [\n    {\n        json: {\n\n            // Number of unique external IPs\n            total_events: nonIndiaIncidents.length,\n\n            // Number of all unique IPs before filtering\n            total_unique_ips: incidents.length,\n\n            // Number of unique non-India IPs\n            non_india_events: nonIndiaIncidents.length,\n\n            // Actual incident details\n            events: nonIndiaIncidents\n        }\n    }\n];"
+      },
+      "id": "409615cb-7f54-4185-a272-b22b2bc31785",
+      "name": "Final Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "command": "ansible bang -b -m shell -a 'CUTOFF=$(date -d \"1 days ago\" +%s); NOW=$(date +%s); YEAR=$(date +%Y); for f in /var/log/secure /var/log/secure.1 /var/log/secure.2 /var/log/secure-*.gz /var/log/secure-*.xz; do [ -r \"$f\" ] || continue; case \"$f\" in *.gz) gzip -cd \"$f\" 2>/dev/null;; *.xz) xz -cd \"$f\" 2>/dev/null;; *) cat \"$f\" 2>/dev/null;; esac; done | grep -E \"sshd.*(Failed|Invalid user|authentication failure|maximum authentication attempts exceeded)\" | while IFS= read -r line; do ts=$(printf \"%s\\n\" \"$line\" | cut -c1-15); epoch=$(date -d \"$ts $YEAR\" +%s 2>/dev/null); [ -n \"$epoch\" ] || continue; [ \"$epoch\" -le \"$NOW\" ] || epoch=$(date -d \"$ts $((YEAR-1))\" +%s 2>/dev/null); [ -n \"$epoch\" ] || continue; [ \"$epoch\" -ge \"$CUTOFF\" ] || continue; [ \"$epoch\" -le \"$NOW\" ] || continue; ip=$(printf \"%s\\n\" \"$line\" | grep -oE \"([0-9]{1,3}\\.){3}[0-9]{1,3}\" | tail -1); [ -n \"$ip\" ] || continue; echo \"SECURITY_EVENT|$line|SOURCE_IP=$ip|EVENT_EPOCH=$epoch\"; done'"
+      },
+      "id": "d7c96e09-7eba-4f8a-8fc7-74bb37f500c5",
+      "name": "Ansible",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1792,
+        -16
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "sorafQAlmtOWgx6I",
+          "name": "SSH Password account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={{ \n(() => {\n\n  const data = $json || {};\n  const events = Array.isArray(data.events) ? data.events : [];\n\n  const escapeHtml = (value) => {\n    return String(value ?? '')\n      .replace(/&/g, '&amp;')\n      .replace(/</g, '&lt;')\n      .replace(/>/g, '&gt;')\n      .replace(/\"/g, '&quot;')\n      .replace(/'/g, '&#39;');\n  };\n\n  // ---------------------------------------------------------\n  // Build event rows from Final Status\n  // ---------------------------------------------------------\n  const eventRows = events.map((e, index) => {\n\n    return `\n      <tr>\n        <td>${index + 1}</td>\n        <td>${escapeHtml(e.hostname || 'Unknown')}</td>\n        <td>${escapeHtml(e.event_type || 'Unknown')}</td>\n        <td><b>${escapeHtml(e.source_ip || 'Unknown')}</b></td>\n        <td>${escapeHtml(e.username || 'Unknown')}</td>\n        <td>${escapeHtml(e.log_time || 'Unknown')}</td>\n        <td>${e.is_non_india ? 'YES' : 'NO'}</td>\n        <td>\n          <b>${escapeHtml(e.alert_severity || 'UNKNOWN')}</b>\n        </td>\n        <td>${escapeHtml(e.country || 'Unknown')}</td>\n        <td>${escapeHtml(e.countryCode || 'Unknown')}</td>\n        <td>${escapeHtml(e.regionName || 'Unknown')}</td>\n        <td>${escapeHtml(e.city || 'Unknown')}</td>\n      </tr>\n    `;\n  }).join('');\n\n  // ---------------------------------------------------------\n  // Detailed log section\n  // ---------------------------------------------------------\n  const logSections = events.map((e, index) => {\n\n    return `\n      <h3 style=\"color:#b00020;\">\n        Event ${index + 1} - ${escapeHtml(e.event_type || 'SSH Security Event')}\n      </h3>\n\n      <table border=\"1\"\n             cellpadding=\"8\"\n             cellspacing=\"0\"\n             style=\"border-collapse:collapse;width:100%;\">\n\n        <tr>\n          <th align=\"left\">Hostname</th>\n          <td>${escapeHtml(e.hostname || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Event Type</th>\n          <td>${escapeHtml(e.event_type || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Source IP</th>\n          <td><b>${escapeHtml(e.source_ip || 'Unknown')}</b></td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Username</th>\n          <td>${escapeHtml(e.username || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Log Time</th>\n          <td>${escapeHtml(e.log_time || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Security Status</th>\n          <td>\n            ${e.is_non_india ? 'NON-INDIA SOURCE' : 'INDIA SOURCE'}\n          </td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Severity</th>\n          <td>\n            <b>${escapeHtml(e.alert_severity || 'UNKNOWN')}</b>\n          </td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Country</th>\n          <td>${escapeHtml(e.country || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Country Code</th>\n          <td>${escapeHtml(e.countryCode || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Region</th>\n          <td>${escapeHtml(e.regionName || e.region || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">City</th>\n          <td>${escapeHtml(e.city || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">ISP</th>\n          <td>${escapeHtml(e.isp || 'Unknown')}</td>\n        </tr>\n\n        <tr>\n          <th align=\"left\">Organization</th>\n          <td>${escapeHtml(e.organization || 'Unknown')}</td>\n        </tr>\n\n      </table>\n\n      <br>\n\n      <b>SSH Log:</b>\n\n      <pre style=\"\n        background:#f4f4f4;\n        padding:10px;\n        border:1px solid #cccccc;\n        white-space:pre-wrap;\n        word-wrap:break-word;\n      \">${escapeHtml(e.log_line || 'No log available')}</pre>\n\n      <hr>\n    `;\n  }).join('');\n\n  // ---------------------------------------------------------\n  // Microsoft Graph email payload\n  // ---------------------------------------------------------\n  const payload = {\n    message: {\n      subject:\n        `CRITICAL SSH Security Alert - ${data.total_events || events.length} Event(s)`,\n\n      body: {\n        contentType: \"HTML\",\n\n        content: `\n<html>\n<body style=\"font-family:Arial,sans-serif;color:#222;\">\n\n<h2 style=\"color:#b00020;\">\nCRITICAL - SSH Security Alert\n</h2>\n\n<p>\nThe SSH Security Monitoring system detected\n<b>${data.total_events || events.length}</b>\nsecurity event(s).\n</p>\n\n<!-- ===================================================== -->\n<!-- FINAL STATUS SUMMARY -->\n<!-- ===================================================== -->\n\n<h3 style=\"color:#333;\">\nFinal Status\n</h3>\n\n<table border=\"1\"\n       cellpadding=\"10\"\n       cellspacing=\"0\"\n       style=\"border-collapse:collapse;width:100%;\">\n\n<tr>\n  <th align=\"left\">Monitoring Window</th>\n  <td>${data.monitoring_window_days || 5} Days</td>\n</tr>\n\n<tr>\n  <th align=\"left\">Total Events</th>\n  <td><b>${data.total_events || events.length}</b></td>\n</tr>\n\n<tr>\n  <th align=\"left\">Unique Source IPs</th>\n  <td><b>${data.total_unique_ips || 'N/A'}</b></td>\n</tr>\n\n<tr>\n  <th align=\"left\">Non-India Events</th>\n  <td>\n    <b style=\"color:#b00020;\">\n      ${data.non_india_events || 0}\n    </b>\n  </td>\n</tr>\n\n<tr>\n  <th align=\"left\">Log Source</th>\n  <td>/var/log/secure</td>\n</tr>\n\n<tr>\n  <th align=\"left\">Monitoring Group</th>\n  <td>Chennai</td>\n</tr>\n\n</table>\n\n<br>\n\n<!-- ===================================================== -->\n<!-- EVENT SUMMARY -->\n<!-- ===================================================== -->\n\n<h3 style=\"color:#333;\">\nSecurity Event Summary\n</h3>\n\n<table border=\"1\"\n       cellpadding=\"8\"\n       cellspacing=\"0\"\n       style=\"border-collapse:collapse;width:100%;font-size:13px;\">\n\n<tr style=\"background:#eeeeee;\">\n  <th>#</th>\n  <th>Hostname</th>\n  <th>Event Type</th>\n  <th>Source IP</th>\n  <th>Username</th>\n  <th>Log Time</th>\n  <th>Non-India</th>\n  <th>Severity</th>\n  <th>Country</th>\n  <th>Code</th>\n  <th>Region</th>\n  <th>City</th>\n</tr>\n\n${eventRows}\n\n</table>\n\n<br>\n\n<!-- ===================================================== -->\n<!-- DETAILED EVENTS -->\n<!-- ===================================================== -->\n\n<h3 style=\"color:#333;\">\nDetailed Security Events\n</h3>\n\n${logSections}\n\n<!-- ===================================================== -->\n<!-- RECOMMENDED ACTION -->\n<!-- ===================================================== -->\n\n<h3 style=\"color:#333;\">\nRecommended Action\n</h3>\n\n<ol>\n  <li>Verify whether the source IP addresses are authorized.</li>\n  <li>Verify whether the usernames are valid accounts.</li>\n  <li>Review additional SSH authentication attempts from the same IP.</li>\n  <li>If the source is unauthorized, block the IP at the firewall/security layer.</li>\n  <li>Review SSH configuration and access restrictions.</li>\n  <li>Check whether key-based authentication is enforced.</li>\n  <li>Continue monitoring repeated authentication failures.</li>\n</ol>\n\n<br>\n\n<p>\n<b>Monitoring System:</b> SSH Intrusion Monitor\n</p>\n\n<p>\n<b>Generated by:</b> n8n Infrastructure Monitoring\n</p>\n\n</body>\n</html>\n`\n      },\n\n      toRecipients: [\n        {\n          emailAddress: {\n            address: \"prem.d@ninestars.in\"\n          }\n        }\n      ]\n    }\n  };\n\n  // VERY IMPORTANT:\n  // Convert JavaScript object to JSON string.\n  return JSON.stringify(payload);\n\n})()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1664,
+        304
+      ],
+      "id": "f44eeb2a-0259-4302-a368-c7ac402a3332",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "timezone": "Asia/kolkata"
+        }
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -2032,
+        -16
+      ],
+      "id": "9a5da1de-58bf-4821-b425-03028aa6ecc5",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create Event Fingerprints\n// Input: multiple SSH security events\n// Output: one item per unique security event\n\nconst output = [];\nconst seen = new Set();\n\n/*\n * 32-bit deterministic hash\n * Used only for duplicate-event detection.\n */\nfunction hash32(str, seed) {\n    let h = seed >>> 0;\n\n    for (let i = 0; i < str.length; i++) {\n        h ^= str.charCodeAt(i);\n        h = Math.imul(h, 16777619) >>> 0;\n        h ^= h >>> 13;\n        h = Math.imul(h, 2246822519) >>> 0;\n        h ^= h >>> 16;\n    }\n\n    return h.toString(16).padStart(8, '0');\n}\n\n/*\n * Create 64-character event fingerprint\n */\nfunction createFingerprint(value) {\n    const seeds = [\n        2166136261,\n        3432918353,\n        123456789,\n        362436069,\n        521288629,\n        88675123,\n        5783321,\n        6615241\n    ];\n\n    return seeds\n        .map(seed => hash32(value, seed))\n        .join('');\n}\n\n/*\n * Process the input items directly.\n */\nfor (const item of items) {\n\n    const r = item.json || {};\n\n    /*\n     * Stable fingerprint source.\n     *\n     * detected_at is intentionally NOT included because\n     * it changes on every workflow execution.\n     */\n    const fingerprintSource = [\n        String(r.hostname || '').trim(),\n        String(r.event_epoch || '').trim(),\n        String(r.source_ip || '').trim(),\n        String(r.source_port || '').trim(),\n        String(r.destination_port || '').trim(),\n        String(r.event_type || '').trim(),\n        String(r.username || '').trim(),\n        String(r.log_file || '').trim(),\n        String(r.log_line || '').trim()\n    ].join('|');\n\n    /*\n     * Generate fingerprint\n     */\n    const eventHash = createFingerprint(fingerprintSource);\n\n    /*\n     * Remove duplicate events during this execution\n     */\n    if (seen.has(eventHash)) {\n        continue;\n    }\n\n    seen.add(eventHash);\n\n    /*\n     * Return event + fingerprint\n     */\n    output.push({\n        json: {\n            ...r,\n            event_hash: eventHash,\n            fingerprint_source: fingerprintSource\n        }\n    });\n}\n\nreturn output;"
+      },
+      "id": "c44bdbe8-b9a2-49d0-940d-3b6a77550ef8",
+      "name": "Create Event Fingerprints1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "disk-alert-condition",
+              "leftValue": "={{ $json.is_non_india }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "ignoreCase": false
+        }
+      },
+      "id": "b56bb30c-e050-43c3-be02-695722ebcd76",
+      "name": "Event FingerPrints",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1152,
+        -48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Parse Ansible Events": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize and Deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Build Unique IP List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Unique IP List": {
+      "main": [
+        [
+          {
+            "node": "Any Events?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Events?": {
+      "main": [
+        [
+          {
+            "node": "Build GeoIP Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build GeoIP Batches": {
+      "main": [
+        [
+          {
+            "node": "GeoIP Lookup - IP API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GeoIP Lookup - IP API": {
+      "main": [
+        [
+          {
+            "node": "Flatten GeoIP Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten GeoIP Results": {
+      "main": [
+        [
+          {
+            "node": "Keep Non-India Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Non-India Sources": {
+      "main": [
+        [
+          {
+            "node": "Create Security Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Security Report": {
+      "main": [
+        [
+          {
+            "node": "Ensure Security Event Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Security Event Table": {
+      "main": [
+        [
+          {
+            "node": "Create Event Fingerprints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Event Fingerprints": {
+      "main": [
+        [
+          {
+            "node": "Event FingerPrints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Security Event": {
+      "main": [
+        [
+          {
+            "node": "Final Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Every 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Date & Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ansible": {
+      "main": [
+        [
+          {
+            "node": "Parse Ansible Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Status": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "main": [
+        [
+          {
+            "node": "Ansible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Event Fingerprints1": {
+      "main": [
+        [
+          {
+            "node": "Store Security Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event FingerPrints": {
+      "main": [
+        [
+          {
+            "node": "Create Event Fingerprints1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c3184066-a6da-4547-8291-07a40170e77a",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "L2ls1uj23Oeu3voU",
+  "tags": []
+}

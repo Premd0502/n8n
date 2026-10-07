@@ -1,0 +1,308 @@
+{
+  "name": "AI Infrastructure Sizing & Estimation",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyse the following project requirements and pre-computed infrastructure calculations, then produce the structured infrastructure sizing recommendation.\\n\\nDATA:\\n{{ $json.ai_payload }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an Enterprise IT Infrastructure Architect sizing infrastructure for a production, ISMS-governed environment. You are given USER INPUT and pre-computed CALCULATED values. Rules: never blindly trust missing values; clearly separate user-provided from calculated from your recommendations; do not under-size; always include growth capacity, operational free space, backup and DR; apply high availability and redundancy for critical components when HA is required; recommend spare hardware where appropriate; give conservative production sizing; state every major assumption and flag anything the infrastructure team must validate. Base storage/data figures on the CALCULATED values (do not recompute differently). Fill CPU/RAM/spec fields with concrete, defensible production values. Return ONLY the structured JSON matching the requested schema, including a complete BOM covering servers, storage (primary/backup/DR), network switches, firewall, desktops, scanners, UPS and backup system.",
+          "maxIterations": 3
+        }
+      },
+      "id": "2d406e2e-b1e1-41ee-8f89-e1cf1fe219ed",
+      "name": "AI Infrastructure Analysis",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        96,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"project_summary\": {\n    \"project_name\": \"\",\n    \"project_duration_years\": 0,\n    \"employees\": 0,\n    \"shifts\": 0,\n    \"working_days\": 0\n  },\n  \"data_analysis\": {\n    \"daily_total_data_tb\": 0,\n    \"annual_data_tb\": 0,\n    \"project_total_data_tb\": 0,\n    \"retention_storage_tb\": 0,\n    \"growth_storage_tb\": 0\n  },\n  \"storage\": {\n    \"primary_storage_tb\": 0,\n    \"backup_storage_tb\": 0,\n    \"dr_storage_tb\": 0,\n    \"recommended_raw_storage_tb\": 0,\n    \"raid_level\": \"\",\n    \"usable_capacity_tb\": 0,\n    \"recommended_free_capacity_percent\": 0\n  },\n  \"servers\": {\n    \"application_servers\": 0,\n    \"database_servers\": 0,\n    \"storage_servers\": 0,\n    \"processing_servers\": 0,\n    \"cpu_cores_per_server\": 0,\n    \"ram_gb_per_server\": 0\n  },\n  \"desktops\": {\n    \"production_desktops\": 0,\n    \"spare_desktops\": 0,\n    \"total_desktops\": 0,\n    \"recommended_ram_gb\": 0,\n    \"recommended_ssd_gb\": 0\n  },\n  \"scanners\": {\n    \"production_scanners\": 0,\n    \"spare_scanners\": 0,\n    \"total_scanners\": 0,\n    \"recommended_speed_images_per_minute\": 0\n  },\n  \"network\": {\n    \"lan_bandwidth\": \"\",\n    \"server_bandwidth\": \"\",\n    \"storage_bandwidth\": \"\",\n    \"internet_bandwidth\": \"\",\n    \"switch_ports_required\": 0\n  },\n  \"firewall\": {\n    \"firewalls_required\": 0,\n    \"ha_required\": false,\n    \"recommended_throughput_gbps\": 0,\n    \"vpn_throughput_gbps\": 0\n  },\n  \"ups\": {\n    \"estimated_load_kw\": 0,\n    \"recommended_ups_kva\": 0\n  },\n  \"bom\": [\n    {\n      \"category\": \"\",\n      \"item\": \"\",\n      \"quantity\": 0,\n      \"minimum_specification\": \"\",\n      \"recommended_specification\": \"\",\n      \"purpose\": \"\",\n      \"assumption\": \"\"\n    }\n  ],\n  \"recommendations\": [\n    \"\"\n  ],\n  \"assumptions\": [\n    \"\"\n  ],\n  \"risks\": [\n    \"\"\n  ],\n  \"capacity_expansion_plan\": [\n    \"\"\n  ]\n}"
+      },
+      "id": "26345e3c-6f2e-4e8c-bf84-5b79043b9115",
+      "name": "Sizing Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        432,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst calc = $('Validate & Calculate Sizing').first().json;\nconst input = calc.input;\nconst c = calc.calculated;\nconst ai = $input.first().json.output || {};\n\nconst esc = (v) => String(v === undefined || v === null ? '' : v)\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst rows = (arr) => (Array.isArray(arr) ? arr : []).map(x => '<li>' + esc(x) + '</li>').join('');\n\nconst yearRows = (c.yearly_capacity || []).map(y =>\n  '<tr><td>Year ' + y.year + '</td><td>' + y.employees + '</td><td>' + y.daily_data_tb +\n  '</td><td>' + y.annual_data_tb + '</td><td>' + y.cumulative_data_tb + '</td></tr>').join('');\n\nconst bom = (ai.bom || []);\nconst bomRows = bom.map(b =>\n  '<tr><td>' + esc(b.category) + '</td><td>' + esc(b.item) + '</td><td>' + esc(b.quantity) +\n  '</td><td>' + esc(b.minimum_specification) + '</td><td>' + esc(b.recommended_specification) +\n  '</td><td>' + esc(b.purpose) + '</td><td>' + esc(b.assumption) + '</td></tr>').join('');\n\nconst kv = (label, val) => '<tr><td>' + esc(label) + '</td><td>' + esc(val) + '</td></tr>';\n\nconst html = `\n<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:960px;margin:0 auto;color:#1a1a1a;\">\n  <h1 style=\"border-bottom:3px solid #ff6d5a;padding-bottom:8px;\">Project Infrastructure Sizing Report</h1>\n  <p><strong>Project:</strong> ${esc(input.project_no)} &nbsp;|&nbsp; <strong>Status:</strong> ${esc(calc.status)}</p>\n  <p style=\"background:#fff3f0;padding:10px;border-radius:6px;font-size:13px;\">Legend: <strong>USER INPUT</strong> → <strong>CALCULATED VALUE</strong> → <strong>AI RECOMMENDATION</strong>. Review before procurement.</p>\n\n  <h2>A. Project Summary (User Input)</h2>\n  <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;\">\n    ${kv('Duration (years)', input.duration_years)}\n    ${kv('Working days / year', input.working_days)}\n    ${kv('Employees', input.employees)}\n    ${kv('Shifts', input.shifts)}\n    ${kv('Working hours / shift', input.working_hours_per_shift)}\n    ${kv('Input image size / day (TB)', input.input_tb_per_day)}\n    ${kv('Output image size / day (TB)', input.output_tb_per_day)}\n    ${kv('Annual data growth (%)', input.annual_growth_percent)}\n    ${kv('Retention (years)', input.retention_years)}\n    ${kv('Backup retention (days)', input.backup_retention_days)}\n    ${kv('High availability', input.ha_required ? 'Yes' : 'No')}\n  </table>\n\n  <h2>B. Data & Storage (Calculated)</h2>\n  <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;\">\n    ${kv('Daily total data (TB)', c.data_analysis.daily_total_data_tb)}\n    ${kv('Year 1 annual data (TB)', c.data_analysis.year1_annual_data_tb)}\n    ${kv('Project total data (TB)', c.data_analysis.project_total_data_tb)}\n    ${kv('Retention storage (TB)', c.data_analysis.retention_storage_tb)}\n    ${kv('Usable storage (TB)', c.storage.usable_storage_tb)}\n    ${kv('Raw storage (TB)', c.storage.raw_storage_tb)}\n    ${kv('Backup storage (TB)', c.storage.backup_storage_tb)}\n    ${kv('DR storage (TB)', c.storage.dr_storage_tb)}\n    ${kv('Recommended free capacity (%)', c.storage.recommended_free_capacity_percent)}\n  </table>\n\n  <h2>C. Compute, Scanners & Network (Calculated)</h2>\n  <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;\">\n    ${kv('Application servers', c.servers.application_servers)}\n    ${kv('Database servers', c.servers.database_servers)}\n    ${kv('Storage servers', c.servers.storage_servers)}\n    ${kv('Processing servers', c.servers.processing_servers)}\n    ${kv('Total desktops (incl. spare)', c.desktops.total_desktops)}\n    ${kv('Required scanners', c.scanners.required_scanners)}\n    ${kv('Total scanners (incl. spare)', c.scanners.total_scanners)}\n    ${kv('Scanner capacity sufficient?', c.scanners.scanner_capacity_sufficient ? 'Yes' : 'No — under-provisioned')}\n    ${kv('LAN bandwidth', c.network.lan_bandwidth)}\n    ${kv('Storage bandwidth', c.network.storage_bandwidth)}\n    ${kv('Firewalls', c.firewall.firewalls_required)}\n    ${kv('Firewall throughput (Gbps)', c.firewall.recommended_throughput_gbps)}\n    ${kv('Estimated load (kW)', c.ups.estimated_load_kw)}\n    ${kv('Recommended UPS (kVA)', c.ups.recommended_ups_kva)}\n  </table>\n\n  <h2>D. Year-wise Capacity Plan</h2>\n  <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;\">\n    <tr style=\"background:#f0f0f0;\"><th>Year</th><th>Employees</th><th>Daily Data (TB)</th><th>Annual Data (TB)</th><th>Cumulative (TB)</th></tr>\n    ${yearRows}\n  </table>\n\n  <h2>E. Recommended Hardware BOM (AI)</h2>\n  <table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;font-size:13px;\">\n    <tr style=\"background:#f0f0f0;\"><th>Category</th><th>Item</th><th>Qty</th><th>Minimum Spec</th><th>Recommended Spec</th><th>Purpose</th><th>Assumption</th></tr>\n    ${bomRows || '<tr><td colspan=\"7\">AI recommendations unavailable.</td></tr>'}\n  </table>\n\n  <h2>F. Recommendations (AI)</h2>\n  <ul>${rows(ai.recommendations) || '<li>Not available</li>'}</ul>\n  <h2>G. Assumptions (AI)</h2>\n  <ul>${rows(ai.assumptions) || '<li>Not available</li>'}</ul>\n  <h2>H. Risks (AI)</h2>\n  <ul>${rows(ai.risks) || '<li>Not available</li>'}</ul>\n  <h2>I. Capacity Expansion Plan (AI)</h2>\n  <ul>${rows(ai.capacity_expansion_plan) || '<li>Not available</li>'}</ul>\n\n  <p style=\"margin-top:24px;font-size:12px;color:#666;\">Generated ${new Date().toISOString()}. Sizing must be validated by the infrastructure team before procurement.</p>\n</div>\n`;\n\nreturn [{ json: { reportHtml: html, status: calc.status, input, calculated: c, ai } }];\n"
+      },
+      "id": "3fd9b996-27ef-42d8-bc65-9375f2de7073",
+      "name": "Build Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.reportHtml }}"
+      },
+      "id": "36e17b2a-7a1e-4542-8170-b8d606847b58",
+      "name": "Display Report",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        640,
+        -128
+      ],
+      "webhookId": "c0252262-8b7f-4ee0-acec-81bac18be6f7"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ---------- helpers ----------\nconst src = $input.first().json;\nconst num = (v, def = 0) => {\n  if (v === undefined || v === null || v === '') return def;\n  const n = parseFloat(String(v).replace(/[^0-9.\\-]/g, ''));\n  return isNaN(n) ? def : n;\n};\nconst yesNo = (v) => String(v || '').trim().toLowerCase() === 'yes';\nconst round = (n, d = 2) => Math.round((n + Number.EPSILON) * Math.pow(10, d)) / Math.pow(10, d);\n\n// ---------- normalized user input ----------\nconst input = {\n  project_no: src.project_no || '',\n  duration_years: Math.max(1, Math.round(num(src.project_duration_years, 1))),\n  working_days: Math.max(1, Math.round(num(src.working_days, 250))),\n  employees: Math.max(0, Math.round(num(src.employees))),\n  shifts: Math.max(1, Math.round(num(src.shifts, 1))),\n  working_hours_per_shift: Math.max(1, num(src.working_hours_per_shift, 8)),\n  input_tb_per_day: num(src.input_image_size_per_day_tb),\n  output_tb_per_day: num(src.output_image_size_per_day_tb),\n  annual_growth_percent: num(src.annual_growth_percent, 0),\n  retention_years: Math.max(1, Math.round(num(src.retention_years, 1))),\n  backup_retention_days: Math.max(1, Math.round(num(src.backup_retention_days, 30))),\n  num_scanners: Math.round(num(src.num_scanners)),\n  scanner_images_per_day: Math.round(num(src.scanner_images_per_day)),\n  concurrent_users: Math.round(num(src.concurrent_users)),\n  ha_required: yesNo(src.ha_required),\n};\n\n// ---------- validation ----------\nconst missing = [];\nif (!input.project_no) missing.push('project_no');\nif (input.input_tb_per_day <= 0 && input.output_tb_per_day <= 0) missing.push('image_size_per_day');\nif (input.employees <= 0) missing.push('employees');\n\n// ---------- data calculations ----------\nconst dailyTotalTb = input.input_tb_per_day + input.output_tb_per_day;\nconst growth = input.annual_growth_percent / 100;\n\n// year-wise capacity (growth applied year over year)\nconst yearly = [];\nlet cumulative = 0;\nlet dailyForYear = dailyTotalTb;\nfor (let y = 1; y <= input.duration_years; y++) {\n  if (y > 1) dailyForYear = dailyForYear * (1 + growth);\n  const annualTb = dailyForYear * input.working_days;\n  cumulative += annualTb;\n  yearly.push({\n    year: y,\n    employees: input.employees,\n    daily_data_tb: round(dailyForYear, 3),\n    annual_data_tb: round(annualTb, 2),\n    cumulative_data_tb: round(cumulative, 2),\n  });\n}\nconst projectTotalTb = cumulative;\nconst year1AnnualTb = yearly[0].annual_data_tb;\n\n// retention storage = data kept during the most recent retention window\nconst retentionWindow = Math.min(input.retention_years, input.duration_years);\nconst retentionStorageTb = yearly\n  .slice(-retentionWindow)\n  .reduce((s, y) => s + y.annual_data_tb, 0);\n\n// growth capacity = extra to accommodate future growth headroom\nconst growthStorageTb = retentionStorageTb * growth;\n\n// ---------- storage sizing ----------\nconst FREE_CAPACITY_PCT = 0.30;      // keep 30% operational free space\nconst RAID_EFFICIENCY = 0.80;        // RAID6 usable ratio (approx)\nconst OVERHEAD_FACTOR = 1.15;        // filesystem + metadata + snapshot + temp\nconst usableStorageTb = (retentionStorageTb + growthStorageTb) * OVERHEAD_FACTOR / (1 - FREE_CAPACITY_PCT);\nconst rawStorageTb = usableStorageTb / RAID_EFFICIENCY;\nconst expansionCapacityTb = usableStorageTb * 0.5; // room to grow\n\n// ---------- backup & DR ----------\nconst backupCopies = 2;\nconst backupCompression = 0.6; // 40% saving\nconst backupStorageTb = retentionStorageTb * backupCopies * backupCompression;\nconst drStorageTb = usableStorageTb; // one DR replica of usable\n\n// ---------- server sizing ----------\nconst effConcurrent = input.concurrent_users > 0 ? input.concurrent_users : Math.ceil(input.employees / Math.max(1, input.shifts));\nconst imageProcessing = dailyTotalTb > 0;\nconst appServers = Math.max(input.ha_required ? 2 : 1, Math.ceil(effConcurrent / 75));\nconst dbServers = input.ha_required ? 2 : 1;\nconst storageServers = input.ha_required ? 2 : 1;\nconst processingServers = imageProcessing ? (input.ha_required ? 2 : 1) : 0;\n\n// ---------- desktops ----------\nconst productionDesktops = Math.max(effConcurrent, Math.ceil(input.employees / Math.max(1, input.shifts)));\nconst spareDesktops = Math.ceil(productionDesktops * 0.10);\n\n// ---------- scanners ----------\nconst SCANNER_THROUGHPUT_IPM = 40;        // images per minute assumption\nconst SCANNER_EFFICIENCY = 0.70;          // duty cycle\nconst availableScanMinutes = input.shifts * input.working_hours_per_shift * 60 * SCANNER_EFFICIENCY;\nconst scannerCapacityPerDay = SCANNER_THROUGHPUT_IPM * availableScanMinutes;\nconst requiredScanners = input.scanner_images_per_day > 0\n  ? Math.ceil(input.scanner_images_per_day / scannerCapacityPerDay)\n  : input.num_scanners;\nconst spareScanners = Math.max(1, Math.ceil(requiredScanners * 0.10));\n\n// ---------- network ----------\nconst peakThroughputGbps = dailyTotalTb / (input.working_hours_per_shift * input.shifts * 3600) * 8 * 1000; // TB/day -> Gbps rough\nlet lanBandwidth = '1 Gbps';\nif (peakThroughputGbps > 1) lanBandwidth = '10 Gbps';\nif (dailyTotalTb >= 2) lanBandwidth = '10 Gbps';\nconst serverBandwidth = dailyTotalTb >= 1 ? '10 Gbps' : '1 Gbps';\nconst storageBandwidth = dailyTotalTb >= 2 ? '25 Gbps' : '10 Gbps';\nconst switchPorts = productionDesktops + spareDesktops + requiredScanners + spareScanners + (appServers + dbServers + storageServers + processingServers) * 2 + 10;\n\n// ---------- firewall ----------\nconst fwThroughputGbps = Math.max(1, Math.ceil((effConcurrent / 50) + (dailyTotalTb)));\nconst firewalls = input.ha_required ? 2 : 1;\n\n// ---------- UPS / power ----------\nconst serverCount = appServers + dbServers + storageServers + processingServers;\nconst estimatedLoadKw = round(\n  serverCount * 0.5 +\n  (productionDesktops + spareDesktops) * 0.2 +\n  (requiredScanners + spareScanners) * 0.1 +\n  firewalls * 0.15 +\n  1.0, // switches/misc\n  2,\n);\nconst upsKva = round(estimatedLoadKw / 0.8 * 1.5, 2); // power factor 0.8, 1.5x redundancy/headroom\n\nconst calculated = {\n  data_analysis: {\n    daily_input_data_tb: round(input.input_tb_per_day, 3),\n    daily_output_data_tb: round(input.output_tb_per_day, 3),\n    daily_total_data_tb: round(dailyTotalTb, 3),\n    year1_annual_data_tb: round(year1AnnualTb, 2),\n    project_total_data_tb: round(projectTotalTb, 2),\n    retention_storage_tb: round(retentionStorageTb, 2),\n    growth_storage_tb: round(growthStorageTb, 2),\n  },\n  storage: {\n    raw_storage_tb: round(rawStorageTb, 2),\n    usable_storage_tb: round(usableStorageTb, 2),\n    recommended_free_capacity_percent: FREE_CAPACITY_PCT * 100,\n    raid_efficiency: RAID_EFFICIENCY,\n    expansion_capacity_tb: round(expansionCapacityTb, 2),\n    backup_storage_tb: round(backupStorageTb, 2),\n    dr_storage_tb: round(drStorageTb, 2),\n  },\n  servers: {\n    application_servers: appServers,\n    database_servers: dbServers,\n    storage_servers: storageServers,\n    processing_servers: processingServers,\n    image_processing_required: imageProcessing,\n    effective_concurrent_users: effConcurrent,\n  },\n  desktops: {\n    production_desktops: productionDesktops,\n    spare_desktops: spareDesktops,\n    total_desktops: productionDesktops + spareDesktops,\n  },\n  scanners: {\n    scanner_capacity_per_day: Math.round(scannerCapacityPerDay),\n    required_scanners: requiredScanners,\n    spare_scanners: spareScanners,\n    total_scanners: requiredScanners + spareScanners,\n    user_planned_scanners: input.num_scanners,\n    scanner_capacity_sufficient: input.num_scanners >= requiredScanners,\n  },\n  network: {\n    lan_bandwidth: lanBandwidth,\n    server_bandwidth: serverBandwidth,\n    storage_bandwidth: storageBandwidth,\n    estimated_switch_ports: switchPorts,\n  },\n  firewall: {\n    firewalls_required: firewalls,\n    ha_required: input.ha_required,\n    recommended_throughput_gbps: fwThroughputGbps,\n  },\n  ups: {\n    estimated_load_kw: estimatedLoadKw,\n    recommended_ups_kva: upsKva,\n  },\n  yearly_capacity: yearly,\n};\n\nconst status = missing.length > 0 ? 'NEEDS_INFORMATION' : 'SUCCESS';\n\nreturn [{\n  json: {\n    status,\n    missing_fields: missing,\n    input,\n    calculated,\n    ai_payload: JSON.stringify({ input, calculated }, null, 2),\n  },\n}];\n"
+      },
+      "id": "5d2eed6a-a383-4fce-97ae-89539e3a952d",
+      "name": "Validate & Calculate Sizing1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Project Infrastructure Sizing Request",
+        "formDescription": "Enter Project requirements. the system calculates data, storage,servers, network and other infrastructure needs,then  an AI architect reviews and recommends a sizing.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Project No.",
+              "fieldName": "project_no",
+              "placeholder": "e.g. PRJ-2026-001",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Project Duration (Years)",
+              "fieldType": "number",
+              "fieldName": "Project_duration_years",
+              "placeholder": "e.g. 5",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "No. of  Working Days Per Year",
+              "fieldType": "number",
+              "placeholder": "e.g. 300",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "No . of Employees",
+              "fieldType": "number",
+              "placeholder": "e.g. 100",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "No. of Shifts",
+              "fieldType": "number",
+              "fieldName": "Shifts",
+              "placeholder": "e.g. 2",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Working Hours per Shift",
+              "fieldType": "number",
+              "fieldName": "Working_hours_per_shift",
+              "placeholder": "e.g. 8 ",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Input Image Total Size per Day (TB)",
+              "fieldType": "number",
+              "fieldName": "input_image_size_per_day_tb",
+              "placeholder": "e.g. 1.5",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Output Image Total Size per Day (TB)",
+              "fieldType": "number",
+              "fieldName": "output_image_size_per_day_tb",
+              "placeholder": "e.g. 0.5",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Expected Annual Data Growth (%)",
+              "fieldType": "number",
+              "fieldName": "annual_growth_percent",
+              "placeholder": "e.g. 15",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Retention Period (Years)",
+              "fieldType": "number",
+              "fieldName": "retentions_years",
+              "placeholder": "e.g. 3"
+            },
+            {
+              "fieldLabel": "Backup Retention (Days)",
+              "fieldType": "number",
+              "fieldName": "backup_retention_days",
+              "placeholder": "e.g. 30",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "No. of Scanners(planned)",
+              "fieldType": "number",
+              "fieldName": "num_scanners",
+              "placeholder": "e.g. 5"
+            },
+            {
+              "fieldLabel": "Total images Scanner per Day",
+              "fieldType": "number",
+              "fieldName": "Scanner_images_per_day",
+              "placeholder": "e.g.50000"
+            },
+            {
+              "fieldLabel": "Expected Concurrent Users",
+              "fieldType": "number",
+              "placeholder": "e.g. 60"
+            },
+            {
+              "fieldLabel": "High Availability Required",
+              "fieldType": "dropdown",
+              "fieldName": "ha_required",
+              "defaultValue": "value1",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes"
+                  },
+                  {
+                    "option": "No"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -336,
+        -112
+      ],
+      "id": "7421ca11-b73d-4d89-a1d2-140025a82c1b",
+      "name": "Project Requirement form submission",
+      "webhookId": "366cac47-d348-43a9-bac5-b143afa716e0"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        112
+      ],
+      "id": "331c8a16-9b6c-4c73-80d6-4cd13d2675c9",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "kYtrsvTkQ4YHvX1X",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Infrastructure Analysis": {
+      "main": [
+        [
+          {
+            "node": "Build Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sizing Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Infrastructure Analysis",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Report": {
+      "main": [
+        [
+          {
+            "node": "Display Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Calculate Sizing1": {
+      "main": [
+        [
+          {
+            "node": "AI Infrastructure Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project Requirement form submission": {
+      "main": [
+        [
+          {
+            "node": "Validate & Calculate Sizing1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Infrastructure Analysis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0b8d782d-435e-4988-8bb4-9d89b53a7abb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "XK6AL8b8qt9erW1d",
+  "tags": []
+}

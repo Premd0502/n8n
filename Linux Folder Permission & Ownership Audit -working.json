@@ -1,0 +1,210 @@
+{
+  "name": "Linux Folder Permission & Ownership Audit -working",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "0c811f1d-36bb-462e-9ad2-17499f021bdb",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// PARSE MULTIPLE ANSIBLE HOSTS FROM ONE STDOUT\n// ============================================================\n\nconst output = $json.stdout || '';\n\nconst lines = output.split(/\\r?\\n/);\n\nconst results = [];\n\nlet currentHostname = '';\nlet auditStarted = false;\n\n// ------------------------------------------------------------\n// Process each line\n// ------------------------------------------------------------\n\nfor (let i = 0; i < lines.length; i++) {\n\n    const rawLine = lines[i];\n    const line = rawLine.trim();\n\n    if (!line) {\n        continue;\n    }\n\n    // --------------------------------------------------------\n    // Detect a NEW HOST section\n    // --------------------------------------------------------\n\n    if (line === '===== HOST =====') {\n\n        auditStarted = false;\n        currentHostname = '';\n\n        // Next non-empty line contains the Ansible host\n        for (let j = i + 1; j < lines.length; j++) {\n\n            const nextLine = lines[j].trim();\n\n            if (!nextLine) {\n                continue;\n            }\n\n            /*\n             * Example:\n             *\n             * infinity.nitlkanchi.com | SUCCESS | rc=0 >>\n             */\n\n            currentHostname = nextLine\n                .split('|')[0]\n                .trim();\n\n            break;\n        }\n\n        continue;\n    }\n\n    // --------------------------------------------------------\n    // Detect directory audit section\n    // --------------------------------------------------------\n\n    if (line.includes('DIRECTORY PERMISSIONS')) {\n\n        auditStarted = true;\n        continue;\n    }\n\n    // --------------------------------------------------------\n    // Ignore lines until a valid host and audit section exist\n    // --------------------------------------------------------\n\n    if (!currentHostname || !auditStarted) {\n        continue;\n    }\n\n    // --------------------------------------------------------\n    // Expected:\n    //\n    // 775 root root /data\n    // 775 app app /data/data1\n    // 755 mysql mysql /data/mysql\n    // --------------------------------------------------------\n\n    const match = line.match(\n        /^([0-7]{3,4})\\s+(\\S+)\\s+(\\S+)\\s+(.+)$/\n    );\n\n    if (!match) {\n        continue;\n    }\n\n    const permission = match[1];\n    const owner = match[2];\n    const group = match[3];\n    const path = match[4];\n\n    // --------------------------------------------------------\n    // Calculate directory depth\n    // --------------------------------------------------------\n\n    const depth =\n        path === '/'\n            ? 0\n            : path.split('/').filter(Boolean).length;\n\n    // --------------------------------------------------------\n    // Add result\n    // --------------------------------------------------------\n\n    results.push({\n        json: {\n            hostname: currentHostname,\n            path: path,\n            permission: permission,\n            owner: owner,\n            group: group,\n            depth: depth,\n            expected_permission: '770',\n            permission_status:\n                permission === '770'\n                    ? 'PASS'\n                    : 'FAIL'\n        }\n    });\n}\n\n// ============================================================\n// RETURN ALL HOST RESULTS\n// ============================================================\n\nreturn results;"
+      },
+      "id": "dfb57d9f-b26c-4277-843a-e69de4cbbda1",
+      "name": "Build Audit Report1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "=// ============================================================\n// LINUX DIRECTORY PERMISSION AUDIT REPORT\n// ============================================================\n\n// Read all items from Audit Configuration\nconst items = $input.all();\n\n// ------------------------------------------------------------\n// Helper: clean hostname\n// ------------------------------------------------------------\nfunction cleanHostname(hostname) {\n    if (!hostname) {\n        return 'Unknown';\n    }\n\n    // Handles values such as:\n    // hostname | SUCCESS | rc=0 >>\n    return hostname\n        .split('|')[0]\n        .replace(/[\\r\\n]/g, '')\n        .trim();\n}\n\n// ------------------------------------------------------------\n// Helper: escape HTML\n// ------------------------------------------------------------\nfunction escapeHtml(value) {\n    if (value === null || value === undefined) {\n        return '';\n    }\n\n    return String(value)\n        .replace(/&/g, '&amp;')\n        .replace(/</g, '&lt;')\n        .replace(/>/g, '&gt;')\n        .replace(/\"/g, '&quot;')\n        .replace(/'/g, '&#039;');\n}\n\n// ------------------------------------------------------------\n// Convert input data\n// ------------------------------------------------------------\nconst records = items.map(item => {\n    const data = item.json || {};\n\n    const permission = String(data.permission || '');\n    const expectedPermission = String(\n        data.expected_permission || '770'\n    );\n\n    return {\n        hostname: cleanHostname(data.hostname),\n        path: data.path || '',\n        permission: permission,\n        owner: data.owner || '',\n        group: data.group || '',\n        depth: Number(data.depth || 0),\n        expected_permission: expectedPermission,\n        permission_status:\n            permission === expectedPermission ? 'PASS' : 'FAIL'\n    };\n});\n\n// ------------------------------------------------------------\n// Remove invalid records\n// ------------------------------------------------------------\nconst validRecords = records.filter(record => {\n    return record.path && record.permission;\n});\n\n// ------------------------------------------------------------\n// Group records by hostname\n// ------------------------------------------------------------\nconst hostGroups = {};\n\nfor (const record of validRecords) {\n\n    if (!hostGroups[record.hostname]) {\n        hostGroups[record.hostname] = [];\n    }\n\n    hostGroups[record.hostname].push(record);\n}\n\n// ------------------------------------------------------------\n// Overall statistics\n// ------------------------------------------------------------\nconst totalDirectories = validRecords.length;\n\nconst failedDirectories = validRecords.filter(\n    r => r.permission_status === 'FAIL'\n);\n\nconst passedDirectories = validRecords.filter(\n    r => r.permission_status === 'PASS'\n);\n\nconst totalHosts = Object.keys(hostGroups).length;\n\nconst overallStatus =\n    failedDirectories.length > 0\n        ? 'CRITICAL'\n        : 'PASS';\n\n// ------------------------------------------------------------\n// Build host summary\n// ------------------------------------------------------------\nlet hostSummaryRows = '';\n\nfor (const [hostname, recordsForHost] of Object.entries(hostGroups)) {\n\n    const hostTotal = recordsForHost.length;\n\n    const hostFailed = recordsForHost.filter(\n        r => r.permission_status === 'FAIL'\n    ).length;\n\n    const hostPassed = recordsForHost.filter(\n        r => r.permission_status === 'PASS'\n    ).length;\n\n    const hostStatus =\n        hostFailed > 0\n            ? 'FAIL'\n            : 'PASS';\n\n    hostSummaryRows += `\n        <tr>\n            <td>${escapeHtml(hostname)}</td>\n            <td>${hostTotal}</td>\n            <td>${hostPassed}</td>\n            <td>${hostFailed}</td>\n            <td>\n                <span class=\"${hostStatus === 'FAIL'\n                    ? 'status-fail'\n                    : 'status-pass'}\">\n                    ${hostStatus}\n                </span>\n            </td>\n        </tr>\n    `;\n}\n\n// ------------------------------------------------------------\n// Build detailed failure report\n// ------------------------------------------------------------\n\nlet failureRows = '';\n\nfor (const record of failedDirectories) {\n\n    failureRows += `\n        <tr>\n            <td>${escapeHtml(record.hostname)}</td>\n            <td>${escapeHtml(record.path)}</td>\n            <td>${escapeHtml(record.permission)}</td>\n            <td>${escapeHtml(record.expected_permission)}</td>\n            <td>${escapeHtml(record.owner)}</td>\n            <td>${escapeHtml(record.group)}</td>\n            <td>${record.depth}</td>\n            <td>\n                <span class=\"status-fail\">\n                    FAIL\n                </span>\n            </td>\n        </tr>\n    `;\n}\n\n// ------------------------------------------------------------\n// If no failures\n// ------------------------------------------------------------\nif (failedDirectories.length === 0) {\n\n    failureRows = `\n        <tr>\n            <td colspan=\"8\" class=\"all-good\">\n                No directory permission violations found.\n                All audited directories are set to 770.\n            </td>\n        </tr>\n    `;\n}\n\n// ------------------------------------------------------------\n// Build HTML report\n// ------------------------------------------------------------\nconst html = `\n<!DOCTYPE html>\n\n<html>\n\n<head>\n\n<meta charset=\"UTF-8\">\n\n<style>\n\nbody {\n    font-family: Arial, Helvetica, sans-serif;\n    font-size: 14px;\n    color: #333333;\n    margin: 20px;\n}\n\nh2 {\n    color: #1f4e79;\n}\n\nh3 {\n    color: #1f4e79;\n    margin-top: 30px;\n}\n\n.summary {\n    border-collapse: collapse;\n    width: 100%;\n    margin-bottom: 25px;\n}\n\n.summary td {\n    border: 1px solid #dddddd;\n    padding: 10px;\n}\n\n.summary .label {\n    font-weight: bold;\n    width: 220px;\n}\n\n.status-box {\n    padding: 10px;\n    margin-bottom: 20px;\n    font-weight: bold;\n}\n\n.critical {\n    background-color: #f8d7da;\n    color: #842029;\n    border: 1px solid #f5c2c7;\n}\n\n.pass {\n    background-color: #d1e7dd;\n    color: #0f5132;\n    border: 1px solid #badbcc;\n}\n\ntable {\n    border-collapse: collapse;\n    width: 100%;\n    margin-top: 10px;\n}\n\nth {\n    background-color: #1f4e79;\n    color: white;\n    padding: 8px;\n    border: 1px solid #cccccc;\n    text-align: left;\n}\n\ntd {\n    padding: 7px;\n    border: 1px solid #dddddd;\n}\n\ntr:nth-child(even) {\n    background-color: #f8f9fa;\n}\n\n.status-fail {\n    color: #b02a37;\n    font-weight: bold;\n}\n\n.status-pass {\n    color: #146c43;\n    font-weight: bold;\n}\n\n.all-good {\n    text-align: center;\n    padding: 15px;\n    color: #146c43;\n    font-weight: bold;\n}\n\n.footer {\n    margin-top: 30px;\n    color: #666666;\n    font-size: 12px;\n}\n\n</style>\n\n</head>\n\n<body>\n\n<h2>Linux Server Directory Permission Audit</h2>\n\n<div class=\"status-box ${overallStatus === 'CRITICAL'\n    ? 'critical'\n    : 'pass'}\">\n\n    Overall Status:\n    ${overallStatus}\n\n</div>\n\n<table class=\"summary\">\n\n<tr>\n    <td class=\"label\">Audit Date</td>\n    <td>${new Date().toLocaleString('en-IN')}</td>\n</tr>\n\n<tr>\n    <td class=\"label\">Servers Audited</td>\n    <td>${totalHosts}</td>\n</tr>\n\n<tr>\n    <td class=\"label\">Directories Audited</td>\n    <td>${totalDirectories}</td>\n</tr>\n\n<tr>\n    <td class=\"label\">Permission Requirement</td>\n    <td>770</td>\n</tr>\n\n<tr>\n    <td class=\"label\">Directories PASS</td>\n    <td>${passedDirectories.length}</td>\n</tr>\n\n<tr>\n    <td class=\"label\">Directories FAIL</td>\n    <td>${failedDirectories.length}</td>\n</tr>\n\n</table>\n\n\n<h3>Server Summary</h3>\n\n<table>\n\n<thead>\n\n<tr>\n    <th>Hostname</th>\n    <th>Total Directories</th>\n    <th>PASS</th>\n    <th>FAIL</th>\n    <th>Status</th>\n</tr>\n\n</thead>\n\n<tbody>\n\n${hostSummaryRows}\n\n</tbody>\n\n</table>\n\n\n<h3>Directory Permission Violations</h3>\n\n<table>\n\n<thead>\n\n<tr>\n    <th>Hostname</th>\n    <th>Directory</th>\n    <th>Current Permission</th>\n    <th>Expected</th>\n    <th>Owner</th>\n    <th>Group</th>\n    <th>Depth</th>\n    <th>Status</th>\n</tr>\n\n</thead>\n\n<tbody>\n\n${failureRows}\n\n</tbody>\n\n</table>\n\n\n<div class=\"footer\">\n\n<p>\n<strong>Audit Scope:</strong>\nMain directory and maximum 4 subdirectory levels.\n</p>\n\n<p>\n<strong>Permission Requirement:</strong>\nDirectory permission must be 770.\n</p>\n\n<p>\nThis report was automatically generated by the n8n Linux Server Audit workflow.\n</p>\n\n</div>\n\n</body>\n\n</html>\n`;\n\n// ------------------------------------------------------------\n// Email subject\n// ------------------------------------------------------------\nconst subject =\n    overallStatus === 'CRITICAL'\n        ? `CRITICAL - Linux Directory Permission Audit - ${failedDirectories.length} violation(s)`\n        : `PASS - Linux Directory Permission Audit`;\n\n// ------------------------------------------------------------\n// Return email-ready JSON\n// ------------------------------------------------------------\nreturn [\n    {\n        json: {\n            status: overallStatus,\n\n            overall_status: overallStatus,\n\n            total_hosts: totalHosts,\n\n            total_directories: totalDirectories,\n\n            passed_directories: passedDirectories.length,\n\n            failed_directories: failedDirectories.length,\n\n            expected_permission: '770',\n\n            subject: subject,\n\n            message: {\n                subject: subject,\n\n                body: {\n                    contentType: 'HTML',\n\n                    content: html\n                },\n\n                toRecipients: [\n                    {\n                        emailAddress: {\n                            address: 'prem.d@ninestars.in'\n                        }\n                    }\n                ]\n            }\n        }\n    }\n];",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        576,
+        32
+      ],
+      "id": "f00ce323-5756-4bcb-b4a2-2b31ff817f36",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        144,
+        -240
+      ],
+      "id": "99f454f1-6539-4a2e-a30e-889cdd4ee1a1",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/home/node/.n8n-files/pdf_output/Final_Audit_Report.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -240
+      ],
+      "id": "5ea2d6c3-b783-4c99-b4b7-964c09d0607b",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "command": "=ansible chennai -f 20 -m shell -a '\necho \"===== HOST =====\"\nhostname\n\necho \"===== DIRECTORY PERMISSIONS NOT 770 (MAX 4 SUBDIRECTORY LEVELS) =====\"\n\nfind / \\\n  -mindepth 1 \\\n  -maxdepth 1 \\\n  -type d \\\n  ! -path /bin \\\n  ! -path /boot \\\n  ! -path /dev \\\n  ! -path /etc \\\n  ! -path /lib \\\n  ! -path /lib64 \\\n  ! -path /lost+found \\\n  ! -path /media \\\n  ! -path /mnt \\\n  ! -path /proc \\\n  ! -path /run \\\n  ! -path /sbin \\\n  ! -path /snap \\\n  ! -path /sys \\\n  ! -path /tmp \\\n  ! -path /opt \\\n  ! -path /usr \\\n  ! -path /var \\\n  -print |\nwhile IFS= read -r BASE\ndo\n  find \"$BASE\" \\\n    -maxdepth 1 \\\n    -type d \\\n    ! -perm 0770 \\\n    -printf \"%m %u %g %p\\n\"\ndone\n'"
+      },
+      "id": "42c74f4b-592b-45a7-89dd-50cbc5d279ef",
+      "name": "ansible_chennai",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        -96
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "sorafQAlmtOWgx6I",
+          "name": "SSH Password account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=ansible kanchi -f 20 -m shell -a '\necho \"===== HOST =====\"\nhostname\n\necho \"===== DIRECTORY PERMISSIONS NOT 770 (MAX 4 SUBDIRECTORY LEVELS) =====\"\n\nfind / \\\n  -mindepth 1 \\\n  -maxdepth 1 \\\n  -type d \\\n  ! -path /bin \\\n  ! -path /boot \\\n  ! -path /dev \\\n  ! -path /etc \\\n  ! -path /lib \\\n  ! -path /lib64 \\\n  ! -path /lost+found \\\n  ! -path /media \\\n  ! -path /mnt \\\n  ! -path /proc \\\n  ! -path /run \\\n  ! -path /sbin \\\n  ! -path /snap \\\n  ! -path /sys \\\n  ! -path /tmp \\\n  ! -path /opt \\\n  ! -path /usr \\\n  ! -path /var \\\n  -print |\nwhile IFS= read -r BASE\ndo\n  find \"$BASE\" \\\n    -maxdepth 1 \\\n    -type d \\\n    ! -perm 0770 \\\n    -printf \"%m %u %g %p\\n\"\ndone\n'"
+      },
+      "id": "a409c4d7-6735-4114-bb68-82fb29f6dea3",
+      "name": "ansible_kanchi",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        96
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "sorafQAlmtOWgx6I",
+          "name": "SSH Password account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=ansible bang -f 20 -m shell -a '\necho \"===== HOST =====\"\nhostname\n\necho \"===== DIRECTORY PERMISSIONS NOT 770 (MAX 4 SUBDIRECTORY LEVELS) =====\"\n\nfind / \\\n  -mindepth 1 \\\n  -maxdepth 1 \\\n  -type d \\\n  ! -path /bin \\\n  ! -path /boot \\\n  ! -path /dev \\\n  ! -path /etc \\\n  ! -path /lib \\\n  ! -path /lib64 \\\n  ! -path /lost+found \\\n  ! -path /media \\\n  ! -path /mnt \\\n  ! -path /proc \\\n  ! -path /run \\\n  ! -path /sbin \\\n  ! -path /snap \\\n  ! -path /sys \\\n  ! -path /tmp \\\n  ! -path /opt \\\n  ! -path /usr \\\n  ! -path /var \\\n  -print |\nwhile IFS= read -r BASE\ndo\n  find \"$BASE\" \\\n    -maxdepth 1 \\\n    -type d \\\n    ! -perm 0770 \\\n    -printf \"%m %u %g %p\\n\"\ndone\n'"
+      },
+      "id": "403e08fd-ae5c-43e3-993a-b2f65de32d8b",
+      "name": "Ansible_Bang",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        -288
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "sorafQAlmtOWgx6I",
+          "name": "SSH Password account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "ansible_chennai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Audit Report1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ansible_Bang": {
+      "main": [
+        []
+      ]
+    },
+    "ansible_chennai": {
+      "main": [
+        [
+          {
+            "node": "Build Audit Report1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "8ab0d0e3-3602-479b-834f-0681e255dcf3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "mkzKRXR3h2n71RHF",
+  "tags": []
+}

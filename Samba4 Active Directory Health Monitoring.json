@@ -1,0 +1,398 @@
+{
+  "name": "Samba4 Active Directory Health Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "35087bc1-0316-48bf-a684-b387a068d0b9",
+      "name": "Every 1 Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1808,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst low = raw.toLowerCase();\n\nconst checks = {\n  service: !/(inactive|failed|dead)/.test(low),\n  config: !/(error loading services|failed to load config)/.test(low),\n  dns: !/(nxdomain|servfail|no servers could be reached|connection timed out)/.test(low),\n  replication: !/(replication.*failed|failed.*replication|error.*replication|consecutive failures)/.test(low),\n  sysvol: !low.includes('sysvol_directory=missing'),\n  database: !/(dbcheck.*failed|database.*error|error.*database)/.test(low),\n  time: !/(clock skew|unsynchronized)/.test(low)\n};\n\nconst failedChecks = Object.keys(checks).filter(k => !checks[k]);\n\nlet status = 'HEALTHY';\nif (failedChecks.length >= 2) status = 'CRITICAL';\nelse if (failedChecks.length === 1) status = 'WARNING';\n\nconst guidance = {\n  service: 'Check samba/samba-ad-dc service status and journal logs.',\n  config: 'Run testparm -s and correct smb.conf configuration errors.',\n  dns: 'Verify AD DNS, resolver configuration, and LDAP/Kerberos SRV records.',\n  replication: 'Run samba-tool drs showrepl and investigate the failed replication partner.',\n  sysvol: 'Verify SYSVOL and NETLOGON shares and GPO/SYSVOL replication.',\n  database: 'Review samba-tool dbcheck output before performing any database repair.',\n  time: 'Verify chrony/NTP synchronization on all domain controllers.'\n};\n\nconst actions = failedChecks.map(x => guidance[x] || `Investigate ${x}.`);\n\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    host: raw.match(/HOST=(.*)/)?.[1]?.trim() || 'unknown',\n    status,\n    failed_checks: failedChecks,\n    checks,\n    incident_required: status !== 'HEALTHY',\n    priority: status === 'CRITICAL' ? 'P1' : status === 'WARNING' ? 'P2' : 'P4',\n    recommended_actions: actions,\n    raw_output: raw\n  }\n}];"
+      },
+      "id": "8f6569c6-b047-4e25-bbc6-78f7128d405d",
+      "name": "2. Analyze AD Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1088,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.status}}",
+              "rightValue": "CRITICAL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0db539d1-3250-42aa-9616-558d88822317",
+      "name": "3. Critical Issue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "w1",
+              "leftValue": "={{$json.status}}",
+              "rightValue": "WARNING",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "50f1c48b-53a6-4a01-84ed-1e3013ba99fe",
+      "name": "4. Warning Issue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -688,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn [{\n  json: {\n    ...j,\n    incident_type: 'SAMBA4_ACTIVE_DIRECTORY_HEALTH',\n    alert_subject: `[${j.priority}] Samba4 AD Health - ${j.host}`,\n    alert_body:\n      `Samba4 Active Directory health issue detected.\\n\\n` +\n      `Host: ${j.host}\\n` +\n      `Status: ${j.status}\\n` +\n      `Priority: ${j.priority}\\n` +\n      `Failed Checks: ${(j.failed_checks || []).join(', ') || 'None'}\\n\\n` +\n      `Recommended Actions:\\n${(j.recommended_actions || []).map(x => '- ' + x).join('\\n')}`\n  }\n}];"
+      },
+      "id": "61ae6d7d-d365-49db-9437-8c58288b809e",
+      "name": "5. Create Incident & Remediation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn [{\n  json: {\n    monitoring_status: 'HEALTHY',\n    timestamp: j.timestamp,\n    host: j.host,\n    message: 'Samba4 Active Directory health checks passed.',\n    checks: j.checks\n  }\n}];"
+      },
+      "id": "79ac4fe2-fffe-4a2c-ae4e-394cbc7d1907",
+      "name": "6. Healthy - Record Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        32
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1808,
+        -192
+      ],
+      "id": "beb023a7-4f3b-4b40-911f-93c6810446e6",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.myNewField = 1;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -128
+      ],
+      "id": "1f904a58-ed36-46ae-8eea-fbfe2bd3daf4",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={\n  \"message\": {\n    \"subject\": \"Linux Samba4 Domain Server Health Status\",\n    \"body\": {\n      \"contentType\": \"HTML\",\n      \"content\": \"<h2>Linux Domain Health Status</h2><p><b>Status:</b> {{ $json.monitoring_status }}</p><p><b>Host:</b> {{ $('6. Healthy - Record Status').item.json.host }}</p><p><b>Recommended Action:</b>{{ $json.message }}</p>\"\n    },\n    \"toRecipients\": [\n      {\n        \"emailAddress\": {\n          \"address\": \"prem.d@ninestars.in\"\n        }\n      }\n    ]\n  }\n}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -144,
+        80
+      ],
+      "id": "99c8449f-5f22-4e5f-9472-736403c714a0",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "set +e; echo \"=== SAMBA4_AD_HEALTH_START ===\"; echo \"TIME=$(date -Is)\"; echo \"HOST=$(hostname -f 2>/dev/null || hostname)\"; echo \"=== SERVICE ===\"; if pgrep -f \"samba\" >/dev/null 2>&1; then echo \"SERVICE_STATUS=active\"; else echo \"SERVICE_STATUS=inactive\"; fi; echo \"=== CONFIG ===\"; testparm -s 2>&1 | tail -n 100; echo \"=== AD PORTS ===\"; ss -lntup 2>/dev/null | grep -E ':(53|88|135|139|389|445|464|636|3268|3269)([[:space:]]|$)' || true; echo \"=== DOMAIN ===\"; samba-tool domain info localhost -s /etc/samba/smb.conf 2>&1; echo \"=== DNS ===\"; DOMAIN=\"${SAMBA_DOMAIN:-$(hostname -d 2>/dev/null)}\"; if [ -n \"$DOMAIN\" ]; then host -t A \"$DOMAIN\" 2>&1 || true; host -t SRV \"_ldap._tcp.$DOMAIN\" 2>&1 || true; host -t SRV \"_kerberos._udp.$DOMAIN\" 2>&1 || true; fi; echo \"=== KERBEROS ===\"; klist 2>&1 || true; echo \"=== REPLICATION ===\"; samba-tool drs showrepl -s /etc/samba/smb.conf 2>&1; echo \"=== FSMO ===\"; samba-tool fsmo show -s /etc/samba/smb.conf 2>&1; echo \"=== SYSVOL_NETLOGON ===\"; test -d /var/lib/samba/sysvol && echo \"SYSVOL_DIRECTORY=OK\" || echo \"SYSVOL_DIRECTORY=MISSING\"; smbclient -L localhost -N 2>&1 | grep -Ei 'SYSVOL|NETLOGON' || true; echo \"=== DATABASE ===\"; samba-tool dbcheck --cross-ncs       -s /etc/samba/smb.conf 2>&1 | tail -n 200; echo \"=== DISK ===\"; df -P -h / /var/lib/samba /var/log 2>&1 || true; echo \"=== MEMORY ===\"; free -h 2>&1 || true; echo \"=== TIME ===\"; timedatectl status 2>&1 | head -n 30 || true; chronyc tracking 2>&1 || true; echo \"=== RECENT_ERRORS ===\"; journalctl --since \"1 hour ago\" --no-pager 2>&1 | grep -Ei 'samba|smbd|winbind|error|failed|critical|panic|denied|timeout' | tail -n 200 || true; echo \"=== SAMBA4_AD_HEALTH_END ===\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1568,
+        400
+      ],
+      "id": "9dfbb1ef-d7ad-4912-9e96-3d99f0c19884",
+      "name": "1. Samba4 AD Health Checks_Bang",
+      "credentials": {
+        "sshPassword": {
+          "id": "a91JV0PD937xZxSj",
+          "name": "Bangalore_LInux_Domain_U"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "set +e; echo \"=== SAMBA4_AD_HEALTH_START ===\"; echo \"TIME=$(date -Is)\"; echo \"HOST=$(hostname -f 2>/dev/null || hostname)\"; echo \"=== SERVICE ===\"; if pgrep -f \"samba\" >/dev/null 2>&1; then echo \"SERVICE_STATUS=active\"; else echo \"SERVICE_STATUS=inactive\"; fi; echo \"=== CONFIG ===\"; testparm -s 2>&1 | tail -n 100; echo \"=== AD PORTS ===\"; ss -lntup 2>/dev/null | grep -E ':(53|88|135|139|389|445|464|636|3268|3269)([[:space:]]|$)' || true; echo \"=== DOMAIN ===\"; samba-tool domain info localhost -s /etc/samba/smb.conf 2>&1; echo \"=== DNS ===\"; DOMAIN=\"${SAMBA_DOMAIN:-$(hostname -d 2>/dev/null)}\"; if [ -n \"$DOMAIN\" ]; then host -t A \"$DOMAIN\" 2>&1 || true; host -t SRV \"_ldap._tcp.$DOMAIN\" 2>&1 || true; host -t SRV \"_kerberos._udp.$DOMAIN\" 2>&1 || true; fi; echo \"=== KERBEROS ===\"; klist 2>&1 || true; echo \"=== REPLICATION ===\"; samba-tool drs showrepl -s /etc/samba/smb.conf 2>&1; echo \"=== FSMO ===\"; samba-tool fsmo show -s /etc/samba/smb.conf 2>&1; echo \"=== SYSVOL_NETLOGON ===\"; test -d /var/lib/samba/sysvol && echo \"SYSVOL_DIRECTORY=OK\" || echo \"SYSVOL_DIRECTORY=MISSING\"; smbclient -L localhost -N 2>&1 | grep -Ei 'SYSVOL|NETLOGON' || true; echo \"=== DATABASE ===\"; samba-tool dbcheck --cross-ncs       -s /etc/samba/smb.conf 2>&1 | tail -n 200; echo \"=== DISK ===\"; df -P -h / /var/lib/samba /var/log 2>&1 || true; echo \"=== MEMORY ===\"; free -h 2>&1 || true; echo \"=== TIME ===\"; timedatectl status 2>&1 | head -n 30 || true; chronyc tracking 2>&1 || true; echo \"=== RECENT_ERRORS ===\"; journalctl --since \"1 hour ago\" --no-pager 2>&1 | grep -Ei 'samba|smbd|winbind|error|failed|critical|panic|denied|timeout' | tail -n 200 || true; echo \"=== SAMBA4_AD_HEALTH_END ===\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1568,
+        144
+      ],
+      "id": "dcfc07b3-3bdc-4c1c-84c3-e247902063cb",
+      "name": "1. Samba4 AD Health_Kanchi",
+      "credentials": {
+        "sshPassword": {
+          "id": "AJ2rurt3nndgEEXj",
+          "name": "Kanchi_Domain-u"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "set +e; echo \"=== SAMBA4_AD_HEALTH_START ===\"; echo \"TIME=$(date -Is)\"; echo \"HOST=$(hostname -f 2>/dev/null || hostname)\"; echo \"=== SERVICE ===\"; if pgrep -f \"samba\" >/dev/null 2>&1; then echo \"SERVICE_STATUS=active\"; else echo \"SERVICE_STATUS=inactive\"; fi; echo \"=== CONFIG ===\"; testparm -s 2>&1 | tail -n 100; echo \"=== AD PORTS ===\"; ss -lntup 2>/dev/null | grep -E ':(53|88|135|139|389|445|464|636|3268|3269)([[:space:]]|$)' || true; echo \"=== DOMAIN ===\"; samba-tool domain info localhost -s /etc/samba/smb.conf 2>&1; echo \"=== DNS ===\"; DOMAIN=\"${SAMBA_DOMAIN:-$(hostname -d 2>/dev/null)}\"; if [ -n \"$DOMAIN\" ]; then host -t A \"$DOMAIN\" 2>&1 || true; host -t SRV \"_ldap._tcp.$DOMAIN\" 2>&1 || true; host -t SRV \"_kerberos._udp.$DOMAIN\" 2>&1 || true; fi; echo \"=== KERBEROS ===\"; klist 2>&1 || true; echo \"=== REPLICATION ===\"; samba-tool drs showrepl -s /etc/samba/smb.conf 2>&1; echo \"=== FSMO ===\"; samba-tool fsmo show -s /etc/samba/smb.conf 2>&1; echo \"=== SYSVOL_NETLOGON ===\"; test -d /var/lib/samba/sysvol && echo \"SYSVOL_DIRECTORY=OK\" || echo \"SYSVOL_DIRECTORY=MISSING\"; smbclient -L localhost -N 2>&1 | grep -Ei 'SYSVOL|NETLOGON' || true; echo \"=== DATABASE ===\"; samba-tool dbcheck --cross-ncs       -s /etc/samba/smb.conf 2>&1 | tail -n 200; echo \"=== DISK ===\"; df -P -h / /var/lib/samba /var/log 2>&1 || true; echo \"=== MEMORY ===\"; free -h 2>&1 || true; echo \"=== TIME ===\"; timedatectl status 2>&1 | head -n 30 || true; chronyc tracking 2>&1 || true; echo \"=== RECENT_ERRORS ===\"; journalctl --since \"1 hour ago\" --no-pager 2>&1 | grep -Ei 'samba|smbd|winbind|error|failed|critical|panic|denied|timeout' | tail -n 200 || true; echo \"=== SAMBA4_AD_HEALTH_END ===\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1296,
+        272
+      ],
+      "id": "806dc907-6068-452f-a350-f90a104efa56",
+      "name": "1. Samba4 AD Health_Mdu",
+      "credentials": {
+        "sshPassword": {
+          "id": "fKk7Ndig1Szbf9qr",
+          "name": "Madurai_Domain_U"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "set +e; echo \"=== SAMBA4_AD_HEALTH_START ===\"; echo \"TIME=$(date -Is)\"; echo \"HOST=$(hostname -f 2>/dev/null || hostname)\"; echo \"=== SERVICE ===\"; if pgrep -f \"samba\" >/dev/null 2>&1; then echo \"SERVICE_STATUS=active\"; else echo \"SERVICE_STATUS=inactive\"; fi; echo \"=== CONFIG ===\"; testparm -s 2>&1 | tail -n 100; echo \"=== AD PORTS ===\"; ss -lntup 2>/dev/null | grep -E ':(53|88|135|139|389|445|464|636|3268|3269)([[:space:]]|$)' || true; echo \"=== DOMAIN ===\"; samba-tool domain info localhost -s /etc/samba/smb.conf 2>&1; echo \"=== DNS ===\"; DOMAIN=\"${SAMBA_DOMAIN:-$(hostname -d 2>/dev/null)}\"; if [ -n \"$DOMAIN\" ]; then host -t A \"$DOMAIN\" 2>&1 || true; host -t SRV \"_ldap._tcp.$DOMAIN\" 2>&1 || true; host -t SRV \"_kerberos._udp.$DOMAIN\" 2>&1 || true; fi; echo \"=== KERBEROS ===\"; klist 2>&1 || true; echo \"=== REPLICATION ===\"; samba-tool drs showrepl -s /etc/samba/smb.conf 2>&1; echo \"=== FSMO ===\"; samba-tool fsmo show -s /etc/samba/smb.conf 2>&1; echo \"=== SYSVOL_NETLOGON ===\"; test -d /var/lib/samba/sysvol && echo \"SYSVOL_DIRECTORY=OK\" || echo \"SYSVOL_DIRECTORY=MISSING\"; smbclient -L localhost -N 2>&1 | grep -Ei 'SYSVOL|NETLOGON' || true; echo \"=== DATABASE ===\"; samba-tool dbcheck --cross-ncs       -s /etc/samba/smb.conf 2>&1 | tail -n 200; echo \"=== DISK ===\"; df -P -h / /var/lib/samba /var/log 2>&1 || true; echo \"=== MEMORY ===\"; free -h 2>&1 || true; echo \"=== TIME ===\"; timedatectl status 2>&1 | head -n 30 || true; chronyc tracking 2>&1 || true; echo \"=== RECENT_ERRORS ===\"; journalctl --since \"1 hour ago\" --no-pager 2>&1 | grep -Ei 'samba|smbd|winbind|error|failed|critical|panic|denied|timeout' | tail -n 200 || true; echo \"=== SAMBA4_AD_HEALTH_END ===\""
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1408,
+        -240
+      ],
+      "id": "e9d887e7-1f96-432b-ada8-a0c3664a6370",
+      "name": "1. Samba4 AD Health CHN",
+      "credentials": {
+        "sshPassword": {
+          "id": "fO3kPOl337djm4JA",
+          "name": "CH_Linux_SMB_Domain_U"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "2. Analyze AD Health": {
+      "main": [
+        [
+          {
+            "node": "3. Critical Issue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Critical Issue?": {
+      "main": [
+        [
+          {
+            "node": "5. Create Incident & Remediation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "4. Warning Issue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Warning Issue?": {
+      "main": [
+        [
+          {
+            "node": "5. Create Incident & Remediation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "6. Healthy - Record Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 1 Hour": {
+      "main": [
+        [
+          {
+            "node": "1. Samba4 AD Health CHN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "1. Samba4 AD Health CHN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Healthy - Record Status": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Samba4 AD Health CHN": {
+      "main": [
+        [
+          {
+            "node": "2. Analyze AD Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Samba4 AD Health_Kanchi": {
+      "main": [
+        []
+      ]
+    },
+    "1. Samba4 AD Health Checks_Bang": {
+      "main": [
+        []
+      ]
+    },
+    "1. Samba4 AD Health_Mdu": {
+      "main": [
+        []
+      ]
+    },
+    "5. Create Incident & Remediation": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "08906797-7d88-477c-b206-dc0ccfc25c66",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "hlAXKx11nctTy3Bc",
+  "tags": []
+}

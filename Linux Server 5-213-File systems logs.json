@@ -1,0 +1,368 @@
+{
+  "name": "Linux Server 5-213-File systems logs",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node — Mode: \"Run Once for All Items\"\n// Paste this whole block into the Code node's editor.\n//\n// Expects each input item to carry the raw log line in a field.\n// Adjust `LOG_FIELD` below to match your actual field name\n// (e.g. \"line\", \"message\", \"log\", \"raw\").\nconst LOG_FIELD = \"line\";\n\nconst CRITICAL_PATTERNS = [\n  /i\\/o error/i,\n  /ext4-fs (error|warning)/i,\n  /xfs\\s*\\(.+\\)\\s*:\\s*.*error/i,\n  /cpu\\s+\\d+:\\s*cpu stopped/i,\n  /kernel panic/i,\n  /out of memory|oom-killer/i,\n  /segfault/i,\n  /read-only file system/i,\n  /disk failure|hard(ware)? failure/i,\n  /mount(ing)? failed|failed to mount/i,\n];\n\nconst NORMAL_OVERRIDE_PATTERNS = [\n  /scsi.*result:\\s*0x00/i,\n  /mount process started/i,\n];\n\nfunction classifyLogLine(line) {\n  for (const pattern of NORMAL_OVERRIDE_PATTERNS) {\n    if (pattern.test(line)) return \"Normal\";\n  }\n  for (const pattern of CRITICAL_PATTERNS) {\n    if (pattern.test(line)) return \"Critical\";\n  }\n  return \"Normal\";\n}\n\n// $input.all() gives you every incoming item from the previous node.\nconst inputItems = $input.all();\n\nconst classified = inputItems.map((item) => {\n  const line = item.json[LOG_FIELD] ?? JSON.stringify(item.json);\n  return {\n    json: {\n      ...item.json,\n      status: classifyLogLine(String(line)),\n    },\n  };\n});\n\nconst overallStatus = classified.some((i) => i.json.status === \"Critical\")\n  ? \"Critical\"\n  : \"Normal\";\n\n// Attach overallStatus to every item so downstream nodes (e.g. the\n// HTML email node) can reference it without a separate merge step.\n// If you'd rather have ONE summary item instead of per-line items,\n// swap the `return classified...` line below for:\n//   return [{ json: { overallStatus, results: classified.map(i => i.json) } }];\nreturn classified.map((item) => ({\n  json: { ...item.json, overallStatus },\n}));"
+      },
+      "id": "babb311c-aca9-43af-a3f7-a3b3c5863246",
+      "name": "Analyze Critical Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -832,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "adf0c860-6fda-4a4c-91f0-72a3ab5b005e",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "5f83c35b-11f5-4994-8438-ca5db0bb3616",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "ddae9325-ae32-48f2-9bc8-21d6ad67ff6d",
+              "leftValue": "={{ $json.overallStatus }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "deb1b373-97d4-4de7-bd53-c4d355ddfef3",
+      "name": "Critical Logs Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "CRITICAL",
+              "type": "string"
+            },
+            {
+              "id": "2d7ca01c-7ef2-4a12-98b6-27798960f0c8",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "1b11c83f-c364-4beb-8b76-76e93af4cea7",
+              "name": "overallStatus",
+              "value": "={{ $json.overallStatus }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "287bf30f-72d2-44f4-bea0-64ed0a06d405",
+      "name": "Create Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -432,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "HEALTHY",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "let conclusion =     \"NORMAL — No critical events detected. Storage is healthy and operating normally.\";",
+              "type": "string"
+            },
+            {
+              "id": "39ddafeb-3109-4b98-81c5-a19be7a3665b",
+              "name": "",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e1fe0f46-55c4-4a11-b96f-e36d86fc3c00",
+      "name": "No Critical Logs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -688,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// ANALYZE CRITICAL LOGS - n8n Code Node (SIMPLIFIED v3)\n// Output: ONLY status + per-line log details (with conclusion\n// and solution) + one overall conclusion/solution.\n// No critical/high/medium/total_findings/total_log_lines counts.\n// ============================================================\n//\n// Mode: \"Run Once for All Items\"\n// Auto-detects input shape (multiple items, one blob with\n// multiple lines, or an array field) - same detection as before.\n// ============================================================\n\nconst LOG_FIELD_CANDIDATES = ['line', 'message', 'log', 'raw', 'text', 'data'];\n\n// ---- Step 1: extract raw chunks from whatever shape the input is ----\nconst inputItems = $input.all();\nconst rawChunks = [];\n\nfor (const item of inputItems) {\n  const j = item.json;\n\n  if (typeof j === 'string') {\n    rawChunks.push(j);\n    continue;\n  }\n\n  let matchedField = null;\n  for (const field of LOG_FIELD_CANDIDATES) {\n    if (j[field] !== undefined && j[field] !== null) {\n      matchedField = field;\n      break;\n    }\n  }\n\n  if (matchedField) {\n    const value = j[matchedField];\n    if (Array.isArray(value)) {\n      rawChunks.push(...value.map(String));\n    } else {\n      rawChunks.push(String(value));\n    }\n  } else {\n    rawChunks.push(JSON.stringify(j));\n  }\n}\n\n// ---- Step 2: split multi-line blobs into individual lines ----\nconst lines = rawChunks\n  .flatMap((chunk) => chunk.split(/\\r?\\n/))\n  .map((l) => l.trim())\n  .filter((l) => l.length > 0);\n\n// ============================================================\n// KNOWLEDGE BASE: pattern -> severity + conclusion + solution\n// Checked in order; first match wins for a given line.\n// ============================================================\n\nconst RULES = [\n  {\n    pattern: /scsi.*result:\\s*0x00/i,\n    severity: 'normal',\n    conclusion: 'SCSI command completed successfully.',\n    solution: 'No action needed.',\n  },\n  {\n    pattern: /mount process started/i,\n    severity: 'normal',\n    conclusion: 'Routine mount operation starting.',\n    solution: 'No action needed.',\n  },\n  {\n    pattern: /cdb:\\s*read\\(10\\)/i,\n    severity: 'normal',\n    conclusion: 'Routine disk read command, no error reported.',\n    solution: 'No action needed.',\n  },\n  {\n    pattern: /unmount initiated while filesystem is being checked|umount failed/i,\n    severity: 'critical',\n    conclusion: 'Filesystem was unmounted or unmount failed while an fsck/check was in progress, risking metadata corruption.',\n    solution: 'Do not remount until a full fsck completes cleanly. Take the volume offline, run fsck to completion, then verify data integrity from backup before returning to service.',\n  },\n  {\n    pattern: /error starting i\\/o/i,\n    severity: 'critical',\n    conclusion: 'The filesystem failed to even initiate an I/O request to the underlying block device, indicating the device or controller path is unresponsive.',\n    solution: 'Check dmesg/SMART data for the underlying disk immediately, verify cabling/backplane and controller health, and fail over to a redundant path or replace the disk if SMART shows pending sectors.',\n  },\n  {\n    pattern: /i\\/o error/i,\n    severity: 'critical',\n    conclusion: 'A read/write I/O error occurred against the underlying block device.',\n    solution: 'Run smartctl on the affected disk, check for bad sectors, review RAID/controller logs, and restore affected files from backup if corruption is confirmed.',\n  },\n  {\n    pattern: /ext4-fs (error|warning)/i,\n    severity: 'critical',\n    conclusion: 'EXT4 filesystem reported an internal error/warning, often triggered by an underlying disk I/O problem.',\n    solution: 'Schedule a fsck on next reboot (or take the volume offline now), inspect the disk for hardware faults, and validate backups are current before remediation.',\n  },\n  {\n    pattern: /inline extent failed to allocate block|inline_data.*failed/i,\n    severity: 'critical',\n    conclusion: 'EXT4 could not allocate a block for inline data, usually caused by filesystem corruption or the volume running out of free space/inodes.',\n    solution: 'Check free space and inode usage (df -i), run fsck offline, and if corruption persists, restore the affected filesystem from backup.',\n  },\n  {\n    pattern: /xfs\\s*\\(.+\\)\\s*:.*error/i,\n    severity: 'critical',\n    conclusion: 'XFS filesystem reported an error, typically from a failing disk or corrupted metadata.',\n    solution: 'Run xfs_repair in dry-run mode first (xfs_repair -n) to assess damage, check underlying disk health, and restore from backup if repair reports unrecoverable corruption.',\n  },\n  {\n    pattern: /cpu\\s+\\d+:\\s*cpu stopped/i,\n    severity: 'critical',\n    conclusion: 'A CPU core halted (TIF_HALT), which can indicate a kernel panic, thermal shutdown, or hardware fault on that core.',\n    solution: 'Check full dmesg/kernel panic trace around this timestamp, review system temperature and power logs, and run hardware diagnostics on the CPU/motherboard.',\n  },\n  {\n    pattern: /kernel panic/i,\n    severity: 'critical',\n    conclusion: 'The kernel panicked and the system likely crashed or rebooted.',\n    solution: 'Collect the full panic trace (netconsole/kdump if configured), identify the triggering subsystem, and check for recent driver/kernel updates or failing hardware.',\n  },\n  {\n    pattern: /out of memory|oom-killer/i,\n    severity: 'critical',\n    conclusion: 'The OOM killer terminated a process due to memory exhaustion.',\n    solution: 'Identify the process that was killed, check for memory leaks, review swap/memory sizing, and consider adding memory or setting cgroup limits.',\n  },\n  {\n    pattern: /segfault/i,\n    severity: 'critical',\n    conclusion: 'A process crashed with a segmentation fault.',\n    solution: 'Identify the crashing binary and check application/system logs for a core dump; update or patch the software if this is a known bug.',\n  },\n  {\n    pattern: /read-only file system/i,\n    severity: 'critical',\n    conclusion: 'The filesystem was remounted read-only, usually as a kernel protective response to a detected I/O error.',\n    solution: 'Investigate the underlying disk immediately (this is a protective fallback, not the root cause), then fsck and remount read-write once the disk is confirmed healthy.',\n  },\n  {\n    pattern: /disk failure|hard(ware)? failure/i,\n    severity: 'critical',\n    conclusion: 'A hardware failure was reported on a storage device.',\n    solution: 'Treat as an active hardware incident - fail over to redundant storage if available and schedule immediate disk replacement.',\n  },\n  {\n    pattern: /host-adapter reported error/i,\n    severity: 'high',\n    conclusion: 'The SCSI/SAS/SATA host adapter reported an error communicating with the device, pointing to a controller, cable, or adapter-level fault rather than the disk media itself.',\n    solution: 'Reseat/replace cabling, check the HBA/controller firmware and logs, and test the disk on a different port or controller to isolate adapter vs. disk fault.',\n  },\n  {\n    pattern: /scsi error 0x[0-9a-f]+/i,\n    severity: 'high',\n    conclusion: 'A SCSI command returned a non-zero error code.',\n    solution: 'Decode the SCSI sense/error code, check disk and controller health, and monitor for recurrence - repeated errors on the same device indicate imminent failure.',\n  },\n  {\n    pattern: /scsi.*result:\\s*0x(?!00)[0-9a-f]+/i,\n    severity: 'high',\n    conclusion: 'A SCSI command completed with a non-success result code.',\n    solution: 'Review the specific result/sense code, check disk SMART status, and escalate to hardware replacement if the code indicates a media or mechanical fault.',\n  },\n  {\n    pattern: /controller error/i,\n    severity: 'high',\n    conclusion: 'The storage controller reported an internal error.',\n    solution: 'Check controller firmware version and logs, and consider a firmware update or controller replacement if errors recur.',\n  },\n  {\n    pattern: /link reset/i,\n    severity: 'high',\n    conclusion: 'A storage link (SAS/FC) was reset, indicating an unstable physical connection.',\n    solution: 'Inspect cabling, transceivers, and switch/HBA ports; replace suspect hardware if resets continue.',\n  },\n  {\n    pattern: /timeout/i,\n    severity: 'high',\n    conclusion: 'An operation timed out, suggesting a slow or unresponsive device/service.',\n    solution: 'Check device/service load and latency, review timeout thresholds, and investigate the specific component that failed to respond in time.',\n  },\n  {\n    pattern: /retry/i,\n    severity: 'medium',\n    conclusion: 'An operation was retried after an initial failure, a warning sign of an intermittent issue.',\n    solution: 'Monitor for a pattern - occasional retries can be benign, but a rising frequency indicates a developing hardware or network problem worth investigating now.',\n  },\n  {\n    pattern: /degraded/i,\n    severity: 'medium',\n    conclusion: 'A resource (RAID array, service, or link) is running in a degraded state.',\n    solution: 'Identify which component is degraded and restore redundancy (e.g. rebuild RAID, replace failed member) before a second fault causes an outage.',\n  },\n  {\n    pattern: /mount(ing)? failed|failed to mount/i,\n    severity: 'medium',\n    conclusion: 'A mount operation failed, possibly due to configuration or a busy/unavailable device.',\n    solution: 'Check the exact mount error, verify the device/network share is available, and confirm fstab/systemd mount unit configuration is correct.',\n  },\n];\n\nfunction analyzeLine(line) {\n  for (const rule of RULES) {\n    if (rule.pattern.test(line)) {\n      return { line, severity: rule.severity, conclusion: rule.conclusion, solution: rule.solution };\n    }\n  }\n  return {\n    line,\n    severity: 'normal',\n    conclusion: 'No known issue pattern matched.',\n    solution: 'No action needed.',\n  };\n}\n\n// ---- Step 3: analyze every line ----\nconst logs = lines.map(analyzeLine);\n\n// ---- Step 4: overall status (worst severity wins) ----\nconst hasCritical = logs.some((l) => l.severity === 'critical');\nconst hasHigh = logs.some((l) => l.severity === 'high');\nconst hasMedium = logs.some((l) => l.severity === 'medium');\n\nlet status = 'HEALTHY';\nif (hasCritical || hasHigh) status = 'CRITICAL';\nelse if (hasMedium) status = 'WARNING';\n\n// ---- Step 5: overall conclusion + solution, built from the actual findings ----\nconst issueLogs = logs.filter((l) => l.severity !== 'normal');\n\nlet overall_conclusion;\nlet overall_solution;\n\nif (issueLogs.length === 0) {\n  overall_conclusion = 'All log lines are routine; no critical, high, or warning-level issues were detected.';\n  overall_solution = 'No action required. Continue normal monitoring.';\n} else {\n  const uniqueConclusions = [...new Set(issueLogs.map((l) => l.conclusion))];\n  const uniqueSolutions = [...new Set(issueLogs.map((l) => l.solution))];\n\n  overall_conclusion =\n    `${issueLogs.length} of ${logs.length} log line(s) indicate problems. ` +\n    uniqueConclusions.join(' ');\n\n  overall_solution =\n    'Recommended actions, in priority order: ' +\n    uniqueSolutions.map((s, i) => `${i + 1}) ${s}`).join(' ');\n}\n\n// ============================================================\n// OUTPUT - status, logs (with per-line conclusion/solution),\n// and one overall conclusion/solution\n// ============================================================\n\nreturn [\n  {\n    json: {\n      status,\n      logs,\n      overall_conclusion,\n      overall_solution,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        -304
+      ],
+      "id": "8f515924-7b13-4fa7-a6ba-a3278e12e43c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={\n  \"message\": {\n    \"subject\": \"Critical Linux Server Alert_K213\",\n    \"body\": {\n      \"contentType\": \"HTML\",\n      \"content\": \"<h2>Critical Linux Server Alert_K213</h2><p><b>Status:</b> {{$json.status}}</p><p><b>Conclusion:</b> {{$json.overall_conclusion}}</p><p><b>Recommended Action:</b> {{$json.overall_solution}}</p>\"\n    },\n    \"toRecipients\": [\n      {\n        \"emailAddress\": {\n          \"address\": \"prem.d@ninestars.in\"\n        }\n      }\n    ]\n  }\n}\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -368,
+        16
+      ],
+      "id": "c92734b2-56aa-4e82-aa07-1e2aee4fd7ed",
+      "name": "HTTP Request",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "sudo journalctl --since \"7 days ago\" -k -o short-iso | awk 'tolower($0) ~ /error|fail|i\\/o|ata|scsi|disk|nvme|ext4|xfs|filesystem|corrupt/'"
+      },
+      "id": "6e05be3f-c15d-49f8-aeb6-b9a78f79b63f",
+      "name": "Get Nagios Critical Logs",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -1344,
+        -304
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "OMBZ5oNr0L7dliy8",
+          "name": "SSH Password account_213"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 4,
+              "minute": 20
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1536,
+        -304
+      ],
+      "id": "52764625-18fe-4595-a591-cbf8df518d63"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Analyze the provided Linux system log like a senior Linux engineer with 20+ years of Linux administration and troubleshooting experience.\n\nIdentify ONLY critical errors, important warnings, and actionable issues. Pay special attention to XFS/EXT4 filesystem errors, filesystem corruption, disk/storage problems, I/O errors, SCSI errors, mount/unmount failures, kernel errors, hardware issues, CPU/memory problems, and service failures. Ignore normal informational messages.\n\nSTRICT OUTPUT RULES:\n1. Output EXACTLY 10 lines and nothing else.\n2. Critical Logs – 5 lines: Print the 5 most important error/warning log findings. Each line must include: Log/Event | Component | Severity | Brief Technical Impact.\n3. Conclusion – 5 lines: Provide one line for each of these topics in this exact order: Critical Issues, Filesystem Errors, Storage/Disk Issues, Other Important Issues, and Immediate Action Required.\n4. Do not use markdown bullets, tables, headings, code fences, or blank lines.\n5. Do not invent issues. Use only evidence present in the supplied log.\n6. If there are fewer than 5 real findings, fill the remaining Critical Logs lines with: No critical issues detected.\n7. If no critical issue exists, explicitly state: \"No critical issues detected.\" at least once and do not claim that storage or filesystem is healthy unless the logs support that conclusion.\n8. Keep every line concise and technically accurate.\n\nLINUX LOG DATA TO ANALYZE:\n----------------------------------------\n{{$json.stdout}}\n----------------------------------------",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -1152,
+        -288
+      ],
+      "id": "2662db6c-b0f7-4e51-be56-64caf8a04101",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -1296,
+        -64
+      ],
+      "id": "6d5f73c7-c197-4600-ad30-102393aa8771",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "kYtrsvTkQ4YHvX1X",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Analyze Critical Logs": {
+      "main": [
+        [
+          {
+            "node": "Critical Logs Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Logs Found?": {
+      "main": [
+        [
+          {
+            "node": "Create Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Critical Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Alert": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Nagios Critical Logs": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Nagios Critical Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Analyze Critical Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5959c3db-05b5-4d02-a946-daba4119cf58",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "iCvyp31DYh8tphZR",
+  "tags": []
+}

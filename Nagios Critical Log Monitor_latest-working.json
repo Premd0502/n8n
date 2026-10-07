@@ -1,0 +1,375 @@
+{
+  "name": "Nagios Critical Log Monitor_latest-working",
+  "nodes": [
+    {
+      "parameters": {
+        "command": "tail -n 2000 /usr/local/nagios/var/nagios.log | grep -Ei 'CRITICAL|WARNING|DOWN|UNREACHABLE|ERROR|FAILED' | tail -n 200",
+        "cwd": "=/"
+      },
+      "id": "9ce6786f-9c5f-42ef-9af3-dc5329416648",
+      "name": "Get Nagios Critical Logs",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        112
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "b3ZNLIwqqZCDPG3j",
+          "name": "Nagios_Pass"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get output from the Nagios SSH node\nconst output = $json.stdout || '';\n\nconst lines = output\n  .split('\\n')\n  .map(line => line.trim())\n  .filter(line => line.length > 0);\n\n// Categorize Nagios events\nconst critical = [];\nconst down = [];\nconst unreachable = [];\nconst errors = [];\nconst warnings = [];\n\nfor (const line of lines) {\n  const upper = line.toUpperCase();\n\n  if (upper.includes('CRITICAL')) {\n    critical.push(line);\n  }\n\n  if (upper.includes('DOWN')) {\n    down.push(line);\n  }\n\n  if (upper.includes('UNREACHABLE')) {\n    unreachable.push(line);\n  }\n\n  if (upper.includes('ERROR') || upper.includes('FAILED')) {\n    errors.push(line);\n  }\n\n  if (upper.includes('WARNING')) {\n    warnings.push(line);\n  }\n}\n\n// Escape HTML characters\nfunction escapeHtml(text) {\n  return text\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}\n\n// Create HTML rows\nfunction createRows(items, status) {\n  if (items.length === 0) {\n    return `\n      <tr>\n        <td colspan=\"2\" style=\"padding:10px;border:1px solid #ddd;\">\n          No ${status} events detected.\n        </td>\n      </tr>`;\n  }\n\n  return items.map((line, index) => `\n    <tr>\n      <td style=\"padding:8px;border:1px solid #ddd;\">\n        ${index + 1}\n      </td>\n      <td style=\"padding:8px;border:1px solid #ddd;font-family:monospace;\">\n        ${escapeHtml(line)}\n      </td>\n    </tr>\n  `).join('');\n}\n\n// Summary counts\nconst totalProblems =\n  critical.length +\n  down.length +\n  unreachable.length +\n  errors.length;\n\nconst totalWarnings = warnings.length;\n\nconst overallStatus = totalProblems > 0\n  ? 'CRITICAL'\n  : totalWarnings > 0\n    ? 'WARNING'\n    : 'HEALTHY';\n\n// Complete HTML email\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<title>Nagios Alert Report</title>\n</head>\n\n<body style=\"font-family:Arial,Helvetica,sans-serif;background:#f5f6f8;margin:0;padding:20px;\">\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\n       style=\"max-width:900px;margin:auto;background:#ffffff;border:1px solid #ddd;\">\n\n<tr>\n<td style=\"padding:20px;background:#1f2937;color:white;\">\n\n<h2 style=\"margin:0;\">\nNagios Monitoring Alert Report\n</h2>\n\n<p style=\"margin:8px 0 0 0;\">\nCritical / Warning / Host Availability Summary\n</p>\n\n</td>\n</tr>\n\n<tr>\n<td style=\"padding:20px;\">\n\n<p>Dear IT Team,</p>\n\n<p>\nPlease find below the latest\n<b>Nagios Monitoring Alert Summary</b>.\n</p>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\n       style=\"border-collapse:collapse;margin:20px 0;\">\n\n<tr>\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>Report Time</b>\n</td>\n\n<td style=\"padding:12px;border:1px solid #ddd;\">\n${new Date().toLocaleString('en-IN', {\n  timeZone: 'Asia/Kolkata'\n})}\n</td>\n</tr>\n\n<tr>\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>Overall Status</b>\n</td>\n\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>${overallStatus}</b>\n</td>\n</tr>\n\n<tr>\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>Total Critical Problems</b>\n</td>\n\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>${totalProblems}</b>\n</td>\n</tr>\n\n<tr>\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>Total Warnings</b>\n</td>\n\n<td style=\"padding:12px;border:1px solid #ddd;\">\n<b>${totalWarnings}</b>\n</td>\n</tr>\n\n</table>\n\n<h3>Nagios Alert Categories</h3>\n\n<ul>\n<li>\n<b>CRITICAL</b> – Critical service failures requiring attention\n</li>\n\n<li>\n<b>DOWN</b> – Host/service reported as down\n</li>\n\n<li>\n<b>UNREACHABLE</b> – Host/network destination unreachable\n</li>\n\n<li>\n<b>ERROR / FAILED</b> – Monitoring or service errors\n</li>\n\n<li>\n<b>WARNING</b> – Potential or developing issues\n</li>\n</ul>\n\n\n<h3>CRITICAL Events</h3>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\nstyle=\"border-collapse:collapse;\">\n\n<tr style=\"background:#dc2626;color:white;\">\n<th style=\"padding:10px;border:1px solid #ddd;width:50px;\">\n#\n</th>\n\n<th style=\"padding:10px;border:1px solid #ddd;\">\nNagios Event\n</th>\n</tr>\n\n${createRows(critical, 'CRITICAL')}\n\n</table>\n\n\n<h3>HOST / SERVICE DOWN Events</h3>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\nstyle=\"border-collapse:collapse;\">\n\n<tr style=\"background:#b91c1c;color:white;\">\n<th style=\"padding:10px;border:1px solid #ddd;width:50px;\">\n#\n</th>\n\n<th style=\"padding:10px;border:1px solid #ddd;\">\nNagios Event\n</th>\n</tr>\n\n${createRows(down, 'DOWN')}\n\n</table>\n\n\n<h3>UNREACHABLE Events</h3>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\nstyle=\"border-collapse:collapse;\">\n\n<tr style=\"background:#ea580c;color:white;\">\n<th style=\"padding:10px;border:1px solid #ddd;width:50px;\">\n#\n</th>\n\n<th style=\"padding:10px;border:1px solid #ddd;\">\nNagios Event\n</th>\n</tr>\n\n${createRows(unreachable, 'UNREACHABLE')}\n\n</table>\n\n\n<h3>ERROR / FAILED Events</h3>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\nstyle=\"border-collapse:collapse;\">\n\n<tr style=\"background:#7c3aed;color:white;\">\n<th style=\"padding:10px;border:1px solid #ddd;width:50px;\">\n#\n</th>\n\n<th style=\"padding:10px;border:1px solid #ddd;\">\nNagios Event\n</th>\n</tr>\n\n${createRows(errors, 'ERROR / FAILED')}\n\n</table>\n\n\n<h3>WARNING Events</h3>\n\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"\nstyle=\"border-collapse:collapse;\">\n\n<tr style=\"background:#d97706;color:white;\">\n<th style=\"padding:10px;border:1px solid #ddd;width:50px;\">\n#\n</th>\n\n<th style=\"padding:10px;border:1px solid #ddd;\">\nNagios Event\n</th>\n</tr>\n\n${createRows(warnings, 'WARNING')}\n\n</table>\n\n\n<h3>Nagios Raw Output</h3>\n\n<pre style=\"\nbackground:#111827;\ncolor:#e5e7eb;\npadding:15px;\nborder-radius:5px;\nwhite-space:pre-wrap;\nfont-size:12px;\n\">${escapeHtml(output || 'No Nagios output received.')}</pre>\n\n\n<p style=\"margin-top:25px;\">\n<b>Action Required:</b>\nPlease review the above Nagios alerts and take appropriate corrective\naction for CRITICAL, DOWN, UNREACHABLE and ERROR/FAILED events.\n</p>\n\n<p>\n<b>Monitoring Note:</b>\nRepeated CRITICAL or UNREACHABLE events may indicate server,\nnetwork, service, storage, or infrastructure problems and should\nbe investigated immediately.\n</p>\n\n<p>\nRegards,<br>\n<b>IT Team</b><br>\nNinestars Information Technologies Pvt Ltd\n</p>\n\n</td>\n</tr>\n\n<tr>\n<td style=\"padding:15px;background:#f3f4f6;color:#6b7280;text-align:center;font-size:11px;\">\n\nThis is an automated Nagios monitoring report generated by n8n.\nPlease do not reply to this automated email.\n\n</td>\n</tr>\n\n</table>\n\n</body>\n</html>\n`;\n\n// Return data for Microsoft Outlook / Graph email node\nreturn [\n  {\n    json: {\n      graphBody: {\n        message: {\n          subject: `Nagios Alert Report - ${overallStatus} - ${new Date().toLocaleDateString('en-IN')}`,\n\n          body: {\n            contentType: 'HTML',\n            content: html\n          },\n\n          toRecipients: [\n            {\n              emailAddress: {\n                address: 'prem.d@ninestars.in'\n              }\n            }\n          ]\n        },\n\n        saveToSentItems: true\n      },\n\n      nagios_summary: {\n        overall_status: overallStatus,\n        critical_count: critical.length,\n        down_count: down.length,\n        unreachable_count: unreachable.length,\n        error_failed_count: errors.length,\n        warning_count: warnings.length,\n        total_problem_count: totalProblems,\n        total_warning_count: totalWarnings\n      }\n    }\n  }\n];"
+      },
+      "id": "70d17bb2-9649-46b3-90ca-89e818cf77cb",
+      "name": "Analyze Critical Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -736,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "f21d32dc-191c-4991-9ddc-16b8264341c8",
+              "leftValue": "={{ $json.nagios_summary.critical_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "e286d569-09d6-4ffb-9f0c-6378a9a2e51a",
+              "leftValue": 0,
+              "rightValue": "={{ $json.nagios_summary.down_count }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "8f376647-d10d-4d97-97f7-084f9c9399ad",
+              "leftValue": "={{ $json.nagios_summary.unreachable_count }}",
+              "rightValue": "={{ $json.nagios_summary.error_failed_count }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "83cb47a7-d2e8-480b-a1fb-3d34d1cf1adc",
+              "leftValue": "={{ $json.nagios_summary.warning_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "ce3779e9-e376-43c3-b726-d006dbc1df53",
+              "leftValue": "={{ $json.nagios_summary.total_problem_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "5a6690e5-9b24-4a4c-9edc-a2626163bb4a",
+              "leftValue": "={{ $json.nagios_summary.total_warning_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "96f663c0-c1b6-40d7-8152-1b9c3537dd81",
+      "name": "Critical Logs Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "CRITICAL",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "=Nagios Critical Log Alert - {{$json.critical_count}} CRITICAL, {{$json.down_count}} DOWN, {{$json.unreachable_count}} UNREACHABLE and {{$json.error_count}} ERROR/FAILED events detected.",
+              "type": "string"
+            },
+            {
+              "id": "8da8a200-6bbc-41fb-a0ed-362d4f6ae4db",
+              "name": "nagios_summary.critical_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.critical_count }}",
+              "type": "number"
+            },
+            {
+              "id": "80003e70-41ae-4c6c-8b6a-a618bdf39372",
+              "name": "nagios_summary.down_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.down_count }}",
+              "type": "number"
+            },
+            {
+              "id": "a93d01c7-817a-41a2-83d4-e0845ce97588",
+              "name": "nagios_summary.unreachable_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.unreachable_count }}",
+              "type": "number"
+            },
+            {
+              "id": "2c80679f-df8c-4b97-b987-5fd9de56ad8b",
+              "name": "nagios_summary.unreachable_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.unreachable_count }}",
+              "type": "number"
+            },
+            {
+              "id": "1b75d249-31ff-49ca-aa06-1b482a8b6395",
+              "name": "nagios_summary.error_failed_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.error_failed_count }}",
+              "type": "number"
+            },
+            {
+              "id": "f068fbb7-93a0-4a61-9cf1-c6a4996a38bf",
+              "name": "nagios_summary.warning_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.warning_count }}",
+              "type": "number"
+            },
+            {
+              "id": "7381ca09-00b3-4dd5-ae43-80928baa9a2d",
+              "name": "nagios_summary.total_problem_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.total_problem_count }}",
+              "type": "number"
+            },
+            {
+              "id": "0dbe2b26-eb28-45ce-8c5a-9829a0b07ad2",
+              "name": "nagios_summary.total_warning_count",
+              "value": "={{ $('Analyze Critical Logs').item.json.nagios_summary.total_warning_count }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "27c8ff19-a80e-45d6-b944-91a704d060fa",
+      "name": "Create Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -368,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "HEALTHY",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "No CRITICAL, DOWN, UNREACHABLE or ERROR/FAILED Nagios events detected in the checked log entries.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "14715870-1ce3-4253-a20c-e06f496a0213",
+      "name": "No Critical Logs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NAGIOS ALERT REPORT - n8n\n// Source: Analyze Critical Logs\n// ============================================================\n\n// IMPORTANT:\n// Get data directly from the \"Analyze Critical Logs\" node.\n// Do NOT use $json.stdout here because stdout is not present\n// in the Analyze Critical Logs output.\n\nconst raw = $('Analyze Critical Logs').first().json;\n\n// Debug: uncomment the next line if you need to see the raw shape again\n// console.log('RAW ANALYZE CRITICAL LOGS OUTPUT:', JSON.stringify(raw, null, 2));\n\n// ============================================================\n// RESILIENT FIELD LOOKUP\n// ============================================================\n// Some nodes nest their summary under a sub-object (e.g. nagios_summary),\n// and field names sometimes vary (error_count vs error_failed_count).\n// This helper checks the flat object first, then a nested \"nagios_summary\"\n// object, then falls back to 0.\n\nconst nested = raw.nagios_summary || raw.summary || {};\n\nfunction getField(...names) {\n  for (const name of names) {\n    if (raw[name] !== undefined && raw[name] !== null) return raw[name];\n    if (nested[name] !== undefined && nested[name] !== null) return nested[name];\n  }\n  return 0;\n}\n\nfunction getArrayField(...names) {\n  for (const name of names) {\n    if (Array.isArray(raw[name])) return raw[name];\n    if (Array.isArray(nested[name])) return nested[name];\n  }\n  return [];\n}\n\n\n// ============================================================\n// GET COUNTS\n// ============================================================\n\nconst totalLogLines   = Number(getField('total_log_lines', 'totalLogLines') || 0);\n\nconst criticalCount   = Number(getField('critical_count', 'criticalCount') || 0);\nconst downCount       = Number(getField('down_count', 'downCount') || 0);\nconst unreachableCount = Number(getField('unreachable_count', 'unreachableCount') || 0);\nconst errorCount      = Number(getField('error_count', 'error_failed_count', 'errorCount', 'errorFailedCount') || 0);\nconst warningCount    = Number(getField('warning_count', 'warningCount') || 0);\n\n\n// ============================================================\n// GET LOG DETAILS\n// ============================================================\n\nconst criticalLogs = getArrayField('critical_logs', 'criticalLogs');\n\n\n// ============================================================\n// DEBUG SUMMARY (visible in Output / console)\n// ============================================================\n\nconst debugInfo = {\n  resolved_from: {\n    used_flat_object: Object.keys(raw).some(k =>\n      ['critical_count','down_count','unreachable_count','error_count','error_failed_count','warning_count'].includes(k)\n    ),\n    used_nested_object: Object.keys(nested).length > 0\n  },\n  resolved_values: {\n    totalLogLines,\n    criticalCount,\n    downCount,\n    unreachableCount,\n    errorCount,\n    warningCount,\n    criticalLogsFound: criticalLogs.length\n  }\n};\n\nconsole.log('NAGIOS FIELD RESOLUTION DEBUG:', JSON.stringify(debugInfo, null, 2));\n\n\n// ============================================================\n// DETERMINE OVERALL STATUS\n// ============================================================\n//\n// CRITICAL if ANY critical/down/unreachable/error exists\n// WARNING  if no critical problems but warnings exist\n// HEALTHY  only when everything is zero\n//\n\nlet overallStatus = 'HEALTHY';\n\nif (\n  criticalCount > 0 ||\n  downCount > 0 ||\n  unreachableCount > 0 ||\n  errorCount > 0\n) {\n  overallStatus = 'CRITICAL';\n}\nelse if (warningCount > 0) {\n  overallStatus = 'WARNING';\n}\n\n\n// ============================================================\n// STATUS MESSAGE\n// ============================================================\n\nlet statusMessage = '';\n\nif (overallStatus === 'CRITICAL') {\n\n  statusMessage =\n    `Nagios detected ${criticalCount} CRITICAL, ` +\n    `${downCount} DOWN, ` +\n    `${unreachableCount} UNREACHABLE and ` +\n    `${errorCount} ERROR/FAILED events. ` +\n    `Immediate investigation is required.`;\n\n}\nelse if (overallStatus === 'WARNING') {\n\n  statusMessage =\n    `Nagios detected ${warningCount} WARNING events. ` +\n    `Please review the monitoring alerts.`;\n\n}\nelse {\n\n  statusMessage =\n    'No CRITICAL, DOWN, UNREACHABLE, ERROR/FAILED or WARNING events detected.';\n\n}\n\n\n// ============================================================\n// ESCAPE HTML\n// ============================================================\n\nfunction escapeHtml(value) {\n\n  return String(value ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n\n}\n\n\n// ============================================================\n// CREATE LOG TABLE\n// ============================================================\n\nfunction createRows(items, status) {\n\n  if (!items || items.length === 0) {\n\n    return `\n      <tr>\n        <td colspan=\"2\"\n            style=\"padding:10px;border:1px solid #ddd;\">\n          No ${status} events detected.\n        </td>\n      </tr>\n    `;\n\n  }\n\n  return items.map((line, index) => {\n\n    return `\n      <tr>\n        <td style=\"\n          padding:8px;\n          border:1px solid #ddd;\n          width:50px;\n          text-align:center;\n        \">\n          ${index + 1}\n        </td>\n\n        <td style=\"\n          padding:8px;\n          border:1px solid #ddd;\n          font-family:monospace;\n          font-size:12px;\n        \">\n          ${escapeHtml(line)}\n        </td>\n      </tr>\n    `;\n\n  }).join('');\n\n}\n\n\n// ============================================================\n// REPORT DATE / TIME\n// ============================================================\n\nconst reportDateTime = new Date().toLocaleString(\n  'en-IN',\n  {\n    timeZone: 'Asia/Kolkata'\n  }\n);\n\nconst reportDate = new Date().toLocaleDateString(\n  'en-IN',\n  {\n    timeZone: 'Asia/Kolkata'\n  }\n);\n\n\n// ============================================================\n// HTML STATUS COLORS\n// ============================================================\n\nlet statusColor = '#16a34a';\nlet statusBackground = '#dcfce7';\n\nif (overallStatus === 'CRITICAL') {\n\n  statusColor = '#dc2626';\n  statusBackground = '#fee2e2';\n\n}\nelse if (overallStatus === 'WARNING') {\n\n  statusColor = '#d97706';\n  statusBackground = '#fef3c7';\n\n}\n\n\n// ============================================================\n// HTML EMAIL\n// ============================================================\n\nconst html = `\n\n<!DOCTYPE html>\n\n<html>\n\n<head>\n\n<meta charset=\"UTF-8\">\n\n<title>Nagios Monitoring Alert Report</title>\n\n</head>\n\n\n<body style=\"\nfont-family:Arial,Helvetica,sans-serif;\nbackground:#f5f6f8;\nmargin:0;\npadding:20px;\n\">\n\n\n<table width=\"100%\"\n       cellpadding=\"0\"\n       cellspacing=\"0\"\n       style=\"\n       max-width:900px;\n       margin:auto;\n       background:#ffffff;\n       border:1px solid #ddd;\n       \">\n\n\n<!-- HEADER -->\n\n<tr>\n\n<td style=\"\npadding:20px;\nbackground:#1f2937;\ncolor:white;\n\">\n\n<h2 style=\"margin:0;\">\n\nNagios Monitoring Alert Report\n\n</h2>\n\n<p style=\"\nmargin:8px 0 0 0;\nfont-size:14px;\n\">\n\nCritical / Warning / Host Availability Summary\n\n</p>\n\n</td>\n\n</tr>\n\n\n<!-- BODY -->\n\n<tr>\n\n<td style=\"padding:20px;\">\n\n\n<p>\n\nDear IT Team,\n\n</p>\n\n\n<p>\n\nPlease find below the latest\n<b>Nagios Monitoring Alert Summary</b>.\n\n</p>\n\n\n<!-- STATUS -->\n\n<table width=\"100%\"\n       cellpadding=\"0\"\n       cellspacing=\"0\"\n       style=\"\n       border-collapse:collapse;\n       margin:20px 0;\n       \">\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\nwidth:40%;\n\">\n\n<b>Report Time</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n${escapeHtml(reportDateTime)}\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>Overall Status</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\nbackground:${statusBackground};\ncolor:${statusColor};\nfont-size:18px;\n\">\n\n<b>${overallStatus}</b>\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>Total Log Lines Checked</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n${totalLogLines}\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>Critical Events</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\ncolor:#dc2626;\nfont-weight:bold;\n\">\n\n${criticalCount}\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>Host / Service DOWN</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\ncolor:#b91c1c;\nfont-weight:bold;\n\">\n\n${downCount}\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>UNREACHABLE</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\ncolor:#ea580c;\nfont-weight:bold;\n\">\n\n${unreachableCount}\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>ERROR / FAILED</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\ncolor:#7c3aed;\nfont-weight:bold;\n\">\n\n${errorCount}\n\n</td>\n\n</tr>\n\n\n<tr>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\n\">\n\n<b>WARNING</b>\n\n</td>\n\n<td style=\"\npadding:12px;\nborder:1px solid #ddd;\ncolor:#d97706;\nfont-weight:bold;\n\">\n\n${warningCount}\n\n</td>\n\n</tr>\n\n\n</table>\n\n\n<!-- STATUS MESSAGE -->\n\n<div style=\"\npadding:15px;\nbackground:${statusBackground};\nborder-left:5px solid ${statusColor};\nmargin:20px 0;\n\">\n\n<b>${overallStatus}</b>\n\n<br>\n\n${escapeHtml(statusMessage)}\n\n</div>\n\n\n<!-- CRITICAL EVENTS -->\n\n<h3 style=\"color:#dc2626;\">\n\nCRITICAL / Nagios Events\n\n</h3>\n\n\n<table width=\"100%\"\n       cellpadding=\"0\"\n       cellspacing=\"0\"\n       style=\"border-collapse:collapse;\">\n\n\n<tr style=\"\nbackground:#dc2626;\ncolor:white;\n\">\n\n<th style=\"\npadding:10px;\nborder:1px solid #ddd;\nwidth:50px;\n\">\n\n#\n\n</th>\n\n<th style=\"\npadding:10px;\nborder:1px solid #ddd;\n\">\n\nNagios Event\n\n</th>\n\n</tr>\n\n\n${createRows(criticalLogs, 'CRITICAL')}\n\n\n</table>\n\n\n<!-- ACTION -->\n\n<div style=\"\nmargin-top:25px;\npadding:15px;\nbackground:#fef2f2;\nborder:1px solid #fecaca;\n\">\n\n\n<b>Action Required:</b>\n\n<br><br>\n\nPlease review the above Nagios monitoring alerts and take\nappropriate corrective action for CRITICAL, DOWN,\nUNREACHABLE and ERROR/FAILED events.\n\n\n</div>\n\n\n<p style=\"margin-top:25px;\">\n\n<b>Monitoring Note:</b>\n\n</p>\n\n\n<p>\n\nRepeated CRITICAL, DOWN or UNREACHABLE events may indicate\nserver, network, service, storage or infrastructure problems\nand should be investigated immediately.\n\n</p>\n\n\n<p>\n\nRegards,<br>\n\n<b>IT Team</b><br>\n\nNinestars Information Technologies Pvt Ltd\n\n</p>\n\n\n</td>\n\n</tr>\n\n\n<!-- FOOTER -->\n\n<tr>\n\n<td style=\"\npadding:15px;\nbackground:#f3f4f6;\ncolor:#6b7280;\ntext-align:center;\nfont-size:11px;\n\">\n\nThis is an automated Nagios monitoring report generated by n8n.\n\n<br>\n\nPlease do not reply to this automated email.\n\n</td>\n\n</tr>\n\n\n</table>\n\n</body>\n\n</html>\n\n`;\n\n\n// ============================================================\n// RETURN GRAPH EMAIL BODY\n// ============================================================\n\nreturn [\n\n  {\n\n    json: {\n\n      graphBody: {\n\n        message: {\n\n          subject:\n            `Nagios Alert Report - ${overallStatus} - ${reportDate}`,\n\n          body: {\n\n            contentType: 'HTML',\n\n            content: html\n\n          },\n\n          toRecipients: [\n\n            {\n\n              emailAddress: {\n\n                address: 'prem.d@ninestars.in'\n\n              }\n\n            }\n\n          ]\n\n        },\n\n        saveToSentItems: true\n\n      },\n\n\n      nagios_summary: {\n\n        overall_status: overallStatus,\n\n        total_log_lines: totalLogLines,\n\n        critical_count: criticalCount,\n\n        down_count: downCount,\n\n        unreachable_count: unreachableCount,\n\n        error_failed_count: errorCount,\n\n        warning_count: warningCount,\n\n        total_problem_count:\n          criticalCount +\n          downCount +\n          unreachableCount +\n          errorCount,\n\n        total_warning_count: warningCount\n\n      },\n\n      // Remove this block once confirmed working — kept for troubleshooting\n      _debug: debugInfo\n\n    }\n\n  }\n\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        -16
+      ],
+      "id": "fe5980f5-4e6a-417a-86ba-18c414d9b9c7",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/json",
+        "body": "={{ JSON.stringify($json.graphBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        128,
+        -16
+      ],
+      "id": "149f1507-7c8c-468c-a380-772e05031510",
+      "name": "HTTP Request1",
+      "credentials": {
+        "microsoftOAuth2Api": {
+          "id": "eqyL4wgU6sHg9ZJM",
+          "name": "Microsoft account"
+        },
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 4,
+              "minute": 25
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        -16
+      ],
+      "id": "29542ec4-d0d1-4152-b9aa-db6291277774"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Nagios Critical Logs": {
+      "main": [
+        [
+          {
+            "node": "Analyze Critical Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Critical Logs": {
+      "main": [
+        [
+          {
+            "node": "Critical Logs Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Logs Found?": {
+      "main": [
+        [
+          {
+            "node": "Create Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Critical Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Alert": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Nagios Critical Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "34a18de8-b223-4e70-9cde-f2fb1d708139",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "UkKTUUS4e08xxucr",
+  "tags": []
+}

@@ -1,0 +1,295 @@
+{
+  "name": "CVSS Score Monitor (NVD → CSV + Excel)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "16026995-ea9b-4a2e-84e5-a9ff671a07e5",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -624,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/.n8n-files/cvss_monitor/cve_ids.txt",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "aeafe63a-91e9-46d3-810b-a740d9af2430",
+      "name": "Read CVE ID List",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst text = buf.toString('utf8');\n\nconst CVE_RE = /^CVE-\\d{4}-\\d{4,7}$/i;\nconst seen = new Set();\nconst out = [];\n\nfor (const rawLine of text.split(/\\r?\\n/)) {\n  const line = rawLine.trim();\n  if (!line || line.startsWith('#')) continue;      // blank lines / comments\n  const id = line.toUpperCase();\n  if (!CVE_RE.test(id)) continue;                   // skip malformed entries\n  if (seen.has(id)) continue;                        // dedupe\n  seen.add(id);\n  out.push({ json: { cve_id: id } });\n}\n\n// Fail loudly rather than silently writing an empty report.\nif (out.length === 0) {\n  throw new Error(\n    'No valid CVE IDs found in cve_ids.txt. ' +\n    'Format: one CVE ID per line, e.g. CVE-2024-3400. Lines starting with # are ignored. ' +\n    'Checked path: /opt/n8n/cvss_monitor/cve_ids.txt'\n  );\n}\n\nreturn out;"
+      },
+      "id": "c1b6452d-2a43-41e5-aef7-1ce6a2fe4a92",
+      "name": "Parse CVE IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "cveId",
+              "value": "={{ $json.cve_id }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 6500
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "de862c2d-4f3e-4452-b33f-0f49833d046f",
+      "name": "Fetch CVSS Data (NVD)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        48,
+        272
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Correlates each NVD response back to the CVE ID that was requested (by\n// position, since the NVD single-cveId endpoint returns one object per\n// call, never an array, so input/output items stay 1:1).\nconst inputIds = $('Parse CVE IDs').all().map(i => i.json.cve_id);\nconst rows = $input.all();\nconst now = new Date().toISOString();\n\nfunction pickMetric(metrics) {\n  if (!metrics) return null;\n  const order = ['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV2'];\n  for (const key of order) {\n    if (Array.isArray(metrics[key]) && metrics[key].length) {\n      const primary = metrics[key].find(m => m.type === 'Primary') || metrics[key][0];\n      return { key, m: primary };\n    }\n  }\n  return null;\n}\n\nconst blank = (cve_id, status, error_detail) => ({ json: {\n  cve_id, status, error_detail,\n  published: '', last_modified: '', description: '',\n  cvss_version: '', base_score: '', base_severity: '', vector_string: '',\n  exploitability_score: '', impact_score: '', vuln_status: '', fetched_at: now\n}});\n\nconst out = [];\nfor (let idx = 0; idx < rows.length; idx++) {\n  const r = rows[idx].json || {};\n  const fallbackId = inputIds[idx] || '';\n\n  // HTTP Request node was set to \"Continue (using error output: off) /\n  // On Error: Continue\" so a failed call lands here with an error field\n  // instead of stopping the whole run.\n  const err = r.error || r.errorMessage;\n  if (err || r.message) {\n    out.push(blank(fallbackId, 'ERROR', String(err || r.message).slice(0, 300)));\n    continue;\n  }\n\n  const vulns = Array.isArray(r.vulnerabilities) ? r.vulnerabilities : [];\n  if (vulns.length === 0) {\n    out.push(blank(fallbackId, 'NOT_FOUND', ''));\n    continue;\n  }\n\n  const cve = vulns[0].cve || {};\n  const cveId = cve.id || fallbackId;\n  const vulnStatus = cve.vulnStatus || '';\n  const descObj = (cve.descriptions || []).find(d => d.lang === 'en') || (cve.descriptions || [])[0] || {};\n  const description = (descObj.value || '').replace(/\\s+/g, ' ').trim().slice(0, 500);\n\n  const picked = pickMetric(cve.metrics);\n  let cvssVersion = '', baseScore = '', baseSeverity = '', vectorString = '', exploitability = '', impact = '';\n  if (picked) {\n    const cd = picked.m.cvssData || {};\n    cvssVersion = cd.version || picked.key.replace('cvssMetric', '');\n    baseScore = cd.baseScore ?? '';\n    baseSeverity = cd.baseSeverity || picked.m.baseSeverity || '';\n    vectorString = cd.vectorString || '';\n    exploitability = picked.m.exploitabilityScore ?? '';\n    impact = picked.m.impactScore ?? '';\n  }\n\n  out.push({ json: {\n    cve_id: cveId,\n    status: vulnStatus === 'Rejected' ? 'REJECTED' : 'FOUND',\n    error_detail: '',\n    published: cve.published || '',\n    last_modified: cve.lastModified || '',\n    description,\n    cvss_version: cvssVersion,\n    base_score: baseScore,\n    base_severity: baseSeverity,\n    vector_string: vectorString,\n    exploitability_score: exploitability,\n    impact_score: impact,\n    vuln_status: vulnStatus,\n    fetched_at: now\n  }});\n}\n\n// Sort worst-first so the report is useful to read top to bottom.\nout.sort((a, b) => (Number(b.json.base_score) || -1) - (Number(a.json.base_score) || -1));\nreturn out;"
+      },
+      "id": "8bba1e94-7c49-444e-b2fa-b473e33fa958",
+      "name": "Normalize CVSS Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst counts = rows.reduce((acc, r) => {\n  acc[r.status] = (acc[r.status] || 0) + 1;\n  return acc;\n}, {});\nconst critical = rows.filter(r => r.status === 'FOUND' && Number(r.base_score) >= 9).length;\n\nreturn [{ json: {\n  run_date: new Date().toISOString(),\n  total_checked: rows.length,\n  found: counts.FOUND || 0,\n  not_found: counts.NOT_FOUND || 0,\n  rejected: counts.REJECTED || 0,\n  errors: counts.ERROR || 0,\n  critical_9_plus: critical\n}}];"
+      },
+      "id": "2e868ce1-e492-4bf6-8055-275f76a081be",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "cvss_report.csv"
+        }
+      },
+      "id": "1dd37eeb-90b5-46d4-84d0-cb9fe1322ee7",
+      "name": "Convert to CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "cvss_report.xlsx",
+          "sheetName": "CVSS Report"
+        }
+      },
+      "id": "6c5c685c-11fe-4833-9ae1-868a3c707546",
+      "name": "Convert to Excel",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/home/node/.n8n-files/cvss_monitor/reports/cvss_report_{{ $now.format('yyyy-LL-dd') }}.csv",
+        "options": {}
+      },
+      "id": "faa3a369-adbc-4800-8823-14ca24e69bff",
+      "name": "Write CSV to Disk",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        704,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/home/node/.n8n-files/cvss_monitor/reports/cvss_report_{{ $now.format('yyyy-LL-dd') }}.xlsx",
+        "options": {}
+      },
+      "id": "032cb0b5-8ce7-41c8-b8ae-a8b7a2160cfb",
+      "name": "Write Excel to Disk",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        704,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 4/5. Save report\nSame data written as both CSV and\nXLSX to /opt/n8n/cvss_monitor/reports/\ndated by day. Make sure that path is\non a persistent volume if n8n runs\nin Docker.",
+        "height": 180,
+        "width": 420
+      },
+      "id": "ff4da23f-5fd8-4eb3-8cbe-e7ee3c514565",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        480,
+        720
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Read CVE ID List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CVE ID List": {
+      "main": [
+        [
+          {
+            "node": "Parse CVE IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CVE IDs": {
+      "main": [
+        [
+          {
+            "node": "Fetch CVSS Data (NVD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch CVSS Data (NVD)": {
+      "main": [
+        [
+          {
+            "node": "Normalize CVSS Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize CVSS Data": {
+      "main": [
+        [
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to CSV": {
+      "main": [
+        [
+          {
+            "node": "Write CSV to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to Excel": {
+      "main": [
+        [
+          {
+            "node": "Write Excel to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "0e46f961-6e91-4231-81ee-1bd67cea7297",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "2Hc3VQ4mLO1QeeV3",
+  "tags": []
+}
