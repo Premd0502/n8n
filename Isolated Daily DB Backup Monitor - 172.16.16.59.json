@@ -1,0 +1,243 @@
+{
+  "name": "Isolated Daily DB Backup Monitor - 172.16.16.59",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "74ff4135-ca7d-44ac-a357-17084a5be803",
+      "name": "Daily 10:00 AM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -992,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "command": "MNT=\"/mnt/isoloted-db-backup\"; BACKUP_DIR=\"$MNT/Isolated_DBbackup/itshare/Telecom-DB-Backup/aclsys/chennai_db\"; echo \"CHECK_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')\"; echo \"HOST=$(hostname)\"; echo \"USER=$(whoami)\"; echo \"BACKUP_DIR=$BACKUP_DIR\"; echo \"=== MOUNT CHECK ===\"; if [ ! -d \"$MNT\" ]; then echo \"MOUNT_STATUS=FAILED\"; echo \"BACKUP_DIR_STATUS=FAILED\"; echo \"ERROR=Mount directory $MNT does not exist\"; exit 2; fi; if ! mountpoint -q \"$MNT\"; then echo \"MOUNT_STATUS=FAILED\"; echo \"BACKUP_DIR_STATUS=FAILED\"; echo \"ERROR=$MNT is not mounted\"; exit 2; fi; echo \"MOUNT_STATUS=OK\"; echo \"--- MOUNT DETAILS ---\"; df -hP \"$MNT\" | tail -n 1; echo \"=== DIRECTORY CHECK ===\"; if [ ! -d \"$BACKUP_DIR\" ]; then echo \"BACKUP_DIR_STATUS=FAILED\"; echo \"ERROR=Backup directory does not exist\"; echo \"--- TOP LEVEL OF MOUNT ---\"; ls -la \"$MNT\"; exit 3; fi; echo \"BACKUP_DIR_STATUS=OK\"; echo \"BACKUP_FILES_BEGIN\"; find \"$BACKUP_DIR\" -maxdepth 1 -type f \\( -name '*.sql.zip' -o -name '*.sql.gz' \\) -printf '%f\\n' | LC_ALL=C sort; echo \"BACKUP_FILES_END\"; echo \"CHECK_STATUS=SUCCESS\"; exit 0"
+      },
+      "id": "7a65ba92-4360-4e7b-aeeb-3a7de91803ee",
+      "name": "SSH - Check Backup HDD",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        -16
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "L2BZN9S2S8nJpFbJ",
+          "name": "59_ssh"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first()?.json || {};\n\nconst stdout = String(input.stdout ?? input.data ?? '');\nconst stderr = String(input.stderr ?? '');\nconst exitCode = Number(input.exitCode ?? input.code ?? 0);\n\nconst EXPECTED_DBS = [\n  'coc_crystal',\n  'coc_isentia_anz',\n  'coc_kmitaly',\n  'coc_nla',\n  'coc_nzg_test',\n  'coc_opoint',\n  'coc_rdl',\n  'coc_volocom',\n  'emslive',\n  'glpidbdumpadmin',\n  'glpidbdump_electrical',\n  'glpinewdbdump',\n  'icp_jstor_aos',\n  'invoicepro_live',\n  'jbooks',\n  'rdl_dmsworkflow'\n];\n\nconst BACKUP_DIR =\n  '/mnt/isolated-db-backup/isolated_DBbackup/itshare/Telecom-DB-Backup/aclsys/chennai_db';\n\nfunction norm(value) {\n  return String(value || '')\n    .trim()\n    .toLowerCase();\n}\n\nfunction getISTDate() {\n\n  const parts = new Intl.DateTimeFormat('en-CA', {\n    timeZone: 'Asia/Kolkata',\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit'\n  }).formatToParts(new Date());\n\n  const p = Object.fromEntries(\n    parts.map(x => [x.type, x.value])\n  );\n\n  return `${p.year}-${p.month}-${p.day}`;\n}\n\nfunction parseDateFromFilename(filename) {\n\n  const name = String(filename);\n\n  // YYYY-MM-DD\n  let m = name.match(\n    /(\\d{4})-(\\d{2})-(\\d{2})/\n  );\n\n  if (m) {\n    return `${m[1]}-${m[2]}-${m[3]}`;\n  }\n\n  // DD-MM-YYYY\n  m = name.match(\n    /(\\d{2})-(\\d{2})-(\\d{4})/\n  );\n\n  if (m) {\n    return `${m[3]}-${m[2]}-${m[1]}`;\n  }\n\n  return null;\n}\n\nfunction parseDbPrefix(filename) {\n\n  let name = String(filename);\n\n  // Remove compression extension\n  name = name.replace(\n    /\\.sql\\.(zip|gz)$/i,\n    ''\n  );\n\n  // YYYY-MM-DD\n  let m = name.match(\n    /^(.*?)(\\d{4}-\\d{2}-\\d{2})/\n  );\n\n  if (m) {\n    return m[1]\n      .replace(/[_-]+$/, '')\n      .toLowerCase();\n  }\n\n  // DD-MM-YYYY\n  m = name.match(\n    /^(.*?)(\\d{2}-\\d{2}-\\d{4})/\n  );\n\n  if (m) {\n    return m[1]\n      .replace(/[_-]+$/, '')\n      .toLowerCase();\n  }\n\n  return null;\n}\n\nconst today = getISTDate();\n\nconst mountMatch =\n  stdout.match(/MOUNT_STATUS=(\\w+)/);\n\nconst mountStatus =\n  mountMatch\n    ? mountMatch[1].toUpperCase()\n    : 'UNKNOWN';\n\nconst dirMatch =\n  stdout.match(/BACKUP_DIR_STATUS=(\\w+)/);\n\nconst backupDirStatus =\n  dirMatch\n    ? dirMatch[1].toUpperCase()\n    : 'UNKNOWN';\n\nconst fileSectionMatch =\n  stdout.match(\n    /BACKUP_FILES_BEGIN\\s*([\\s\\S]*?)\\s*BACKUP_FILES_END/\n  );\n\nconst fileSection =\n  fileSectionMatch\n    ? fileSectionMatch[1]\n    : '';\n\nconst files = fileSection\n  .split(/\\r?\\n/)\n  .map(x => x.trim())\n  .filter(Boolean);\n\nconst fileRecords = files\n  .filter(file =>\n    /\\.sql\\.(zip|gz)$/i.test(file)\n  )\n  .map(filename => ({\n    filename,\n    database: parseDbPrefix(filename),\n    backup_date: parseDateFromFilename(filename)\n  }));\n\nconst todayFiles = fileRecords.filter(\n  x =>\n    x.backup_date === today &&\n    x.database\n);\n\nconst todayByDatabase = new Map();\n\nfor (const file of todayFiles) {\n\n  const db = norm(file.database);\n\n  if (!todayByDatabase.has(db)) {\n    todayByDatabase.set(db, []);\n  }\n\n  todayByDatabase\n    .get(db)\n    .push(file.filename);\n}\n\nconst databaseResults = EXPECTED_DBS.map(database => {\n\n  const matches =\n    todayByDatabase.get(norm(database)) || [];\n\n  return {\n\n    database,\n\n    status:\n      matches.length > 0\n        ? 'BACKUP_PRESENT'\n        : 'BACKUP_MISSING',\n\n    backup_count_today:\n      matches.length,\n\n    backup_files_today:\n      matches,\n\n    latest_backup_file:\n      matches.length\n        ? matches[matches.length - 1]\n        : null\n  };\n});\n\nconst missingDatabases =\n  databaseResults.filter(\n    x => x.status === 'BACKUP_MISSING'\n  );\n\nconst presentDatabases =\n  databaseResults.filter(\n    x => x.status === 'BACKUP_PRESENT'\n  );\n\nlet healthStatus = 'HEALTHY';\n\nif (mountStatus !== 'OK') {\n\n  healthStatus =\n    'CRITICAL - HDD MOUNT NOT AVAILABLE';\n\n}\nelse if (backupDirStatus !== 'OK') {\n\n  healthStatus =\n    'CRITICAL - BACKUP DIRECTORY NOT AVAILABLE';\n\n}\nelse if (missingDatabases.length > 0) {\n\n  healthStatus =\n    'WARNING - DATABASE BACKUP(S) MISSING';\n}\n\nconst coverage =\n  (\n    presentDatabases.length /\n    EXPECTED_DBS.length\n  ) * 100;\n\nreturn [\n  {\n    json: {\n\n      run_at:\n        new Date().toISOString(),\n\n      check_date_ist:\n        today,\n\n      hostname:\n        input.hostname || null,\n\n      backup_dir:\n        BACKUP_DIR,\n\n      mount_status:\n        mountStatus,\n\n      backup_dir_status:\n        backupDirStatus,\n\n      ssh_exit_code:\n        exitCode,\n\n      ssh_stderr:\n        stderr,\n\n      health_status:\n        healthStatus,\n\n      expected_database_count:\n        EXPECTED_DBS.length,\n\n      backup_present_count:\n        presentDatabases.length,\n\n      backup_missing_count:\n        missingDatabases.length,\n\n      coverage_percent:\n        Number(coverage.toFixed(2)),\n\n      expected_databases:\n        EXPECTED_DBS,\n\n      database_results:\n        databaseResults,\n\n      missing_databases:\n        missingDatabases.map(\n          x => x.database\n        ),\n\n      present_databases:\n        presentDatabases.map(\n          x => x.database\n        ),\n\n      today_backup_files:\n        todayFiles.map(\n          x => x.filename\n        )\n    }\n  }\n];"
+      },
+      "id": "eae8c9d8-5222-4f80-8113-02a0988ac535",
+      "name": "Analyse Daily Backup Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "mount",
+              "leftValue": "={{ $json.mount_status }}",
+              "rightValue": "OK",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "missing",
+              "leftValue": "={{ $json.backup_missing_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "a27e31b5-f783-4668-97ff-d5bef018000d",
+      "name": "Alert Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -288,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst d = $json;\nconst esc = v => String(v ?? '')\n  .replace(/&/g,'&amp;').replace(/</g,'&lt;')\n  .replace(/>/g,'&gt;').replace(/\"/g,'&quot;')\n  .replace(/'/g,'&#39;');\n\nconst critical = d.mount_status !== 'OK';\nconst subject = critical\n  ? `CRITICAL - DB Backup HDD/Mount Problem - ${d.check_date_ist}`\n  : `WARNING - DB Backup Missing - ${d.backup_missing_count} Database(s) - ${d.check_date_ist}`;\n\nconst missingRows = (d.database_results || [])\n  .filter(x => x.status === 'BACKUP_MISSING')\n  .map((x,i) => `<tr>\n<td style=\"border:1px solid #999;padding:7px\">${i+1}</td>\n<td style=\"border:1px solid #999;padding:7px\"><b>${esc(x.database)}</b></td>\n<td style=\"border:1px solid #999;padding:7px;color:#b00020\"><b>BACKUP MISSING</b></td>\n<td style=\"border:1px solid #999;padding:7px\">${esc((x.backup_files_today || []).join(', ') || 'No backup file found for today')}</td>\n</tr>`).join('');\n\nconst presentRows = (d.database_results || [])\n  .filter(x => x.status === 'BACKUP_PRESENT')\n  .map((x,i) => `<tr>\n<td style=\"border:1px solid #999;padding:7px\">${i+1}</td>\n<td style=\"border:1px solid #999;padding:7px\">${esc(x.database)}</td>\n<td style=\"border:1px solid #999;padding:7px;color:#16803c\"><b>PRESENT</b></td>\n<td style=\"border:1px solid #999;padding:7px\">${esc((x.backup_files_today || []).join(', '))}</td>\n</tr>`).join('');\n\nconst html = `<html><body style=\"font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222\">\n<h2 style=\"color:${critical ? '#b00020' : '#c47a00'}\">Database Backup Monitoring Alert</h2>\n<p><b>Server:</b> 172.16.16.59</p>\n<p><b>Backup Directory:</b> ${esc(d.backup_dir)}</p>\n<p><b>Check Date (IST):</b> ${esc(d.check_date_ist)}</p>\n\n<table style=\"border-collapse:collapse;width:700px\">\n<tr style=\"background:#1f4e78;color:white\"><th style=\"padding:8px;text-align:left\">Metric</th><th style=\"padding:8px;text-align:left\">Result</th></tr>\n<tr><td style=\"border:1px solid #bbb;padding:8px\">Overall Status</td><td style=\"border:1px solid #bbb;padding:8px\"><b>${esc(d.health_status)}</b></td></tr>\n<tr><td style=\"border:1px solid #bbb;padding:8px\">HDD Mount</td><td style=\"border:1px solid #bbb;padding:8px\"><b>${esc(d.mount_status)}</b></td></tr>\n<tr><td style=\"border:1px solid #bbb;padding:8px\">Expected Databases</td><td style=\"border:1px solid #bbb;padding:8px\">${d.expected_database_count}</td></tr>\n<tr><td style=\"border:1px solid #bbb;padding:8px\">Backups Present Today</td><td style=\"border:1px solid #bbb;padding:8px\">${d.backup_present_count}</td></tr>\n<tr><td style=\"border:1px solid #bbb;padding:8px\">Backups Missing Today</td><td style=\"border:1px solid #bbb;padding:8px\"><b style=\"color:#b00020\">${d.backup_missing_count}</b></td></tr>\n<tr><td style=\"border:1px solid #bbb;padding:8px\">Backup Coverage</td><td style=\"border:1px solid #bbb;padding:8px\"><b>${d.coverage_percent}%</b></td></tr>\n</table>\n\n${critical ? `<h3 style=\"color:#b00020\">CRITICAL: Backup HDD Mount Check Failed</h3>\n<p>The backup filesystem is not mounted at the expected path. Do <b>not</b> assume backups are safe until the mount is restored.</p>` : ''}\n\n${d.backup_missing_count ? `<h3 style=\"color:#b00020\">Missing Database Backups</h3>\n<table style=\"border-collapse:collapse;width:100%\">\n<tr style=\"background:#f4cccc\"><th style=\"padding:7px;border:1px solid #999\">#</th><th style=\"padding:7px;border:1px solid #999;text-align:left\">Database</th><th style=\"padding:7px;border:1px solid #999\">Status</th><th style=\"padding:7px;border:1px solid #999;text-align:left\">Files Found Today</th></tr>\n${missingRows}\n</table>` : ''}\n\n<h3 style=\"color:#1f4e78\">Today's Backup Status</h3>\n<table style=\"border-collapse:collapse;width:100%\">\n<tr style=\"background:#d9ead3\"><th style=\"padding:7px;border:1px solid #999\">#</th><th style=\"padding:7px;border:1px solid #999;text-align:left\">Database</th><th style=\"padding:7px;border:1px solid #999\">Status</th><th style=\"padding:7px;border:1px solid #999;text-align:left\">Backup File(s)</th></tr>\n${presentRows || '<tr><td colspan=\"4\" style=\"padding:10px\">No databases found.</td></tr>'}\n</table>\n\n<h3>Recommended Action</h3>\n<ol>\n<li>Verify the external HDD is connected and mounted.</li>\n<li>For each missing database, check the backup job/cron and source DB status.</li>\n<li>Review backup script and transfer logs for failures.</li>\n<li>Confirm a valid today's <code>.sql.zip</code> or <code>.sql.gz</code> backup exists.</li>\n<li>Rerun this workflow after correction to confirm coverage.</li>\n</ol>\n\n<p style=\"font-size:11px;color:#666\">Generated automatically by n8n DB Backup Monitoring. Status is determined from the configured database list and today's date in Asia/Kolkata.</p>\n</body></html>`;\n\nconst graphBody = {\n  message: {\n    subject,\n    body: {contentType: 'HTML', content: html},\n    toRecipients: [{emailAddress: {address: 'prem.d@ninestars.in'}}]\n  }\n};\n\nreturn [{json: {...d, email_subject: subject, email_html: html, graph_body: JSON.stringify(graphBody)}}];\n"
+      },
+      "id": "df47b7ae-f743-4b53-b94a-788a98d3550e",
+      "name": "Build Missing Backup Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.graph_body }}",
+        "options": {}
+      },
+      "id": "2954b84f-6076-429d-bc8f-3c66c2467da9",
+      "name": "Send Missing Backup Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        -240
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d=$json; return [{json:{status:'ALERT_SENT',check_date_ist:d.check_date_ist,mount_status:d.mount_status,expected_database_count:d.expected_database_count,backup_present_count:d.backup_present_count,backup_missing_count:d.backup_missing_count,coverage_percent:d.coverage_percent,missing_databases:d.missing_databases}}];"
+      },
+      "id": "9df0a528-19fa-4985-b812-94a50e86277d",
+      "name": "Alert Sent Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 10:00 AM IST": {
+      "main": [
+        [
+          {
+            "node": "SSH - Check Backup HDD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH - Check Backup HDD": {
+      "main": [
+        [
+          {
+            "node": "Analyse Daily Backup Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyse Daily Backup Status": {
+      "main": [
+        [
+          {
+            "node": "Alert Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Required?": {
+      "main": [
+        [
+          {
+            "node": "Build Missing Backup Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Missing Backup Email": {
+      "main": [
+        [
+          {
+            "node": "Send Missing Backup Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Missing Backup Email": {
+      "main": [
+        [
+          {
+            "node": "Alert Sent Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e2248f97-8487-4f68-9bd9-8a3c984fa2c7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "lGOkfdIHQbzO7Xt6",
+  "tags": []
+}
