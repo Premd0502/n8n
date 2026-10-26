@@ -1,0 +1,509 @@
+{
+  "name": "Microsoft 365 Tenant Monitor (users, groups, licenses, forwarding)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "4f9551e1-38a3-4e6e-9989-13959274fa34",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============ EDIT THESE VALUES ============\nconst cfg = {\n  MAIL_TO: 'prem.d@ninestars.in',          // who receives the report\n  LOOKBACK_HOURS: 24,                      // \"new users / groups\" window (keep equal to the schedule interval)\n  ACTIVE_DAYS: 30,                         // a group member counts as \"logged in\" if signed in within this many days\n  INACTIVE_DAYS: 90,                       // licensed user with no sign-in for this long is flagged\n  MAX_LIST_PER_LICENSE: 100,               // names printed per license in the mail (full list is in the CSV)\n  MAX_ALIAS_ROWS: 100,                     // alias rows printed in the mail (full list is in the CSV)\n  EXTRA_INTERNAL_DOMAINS: []               // e.g. ['ninestar.co.in']  (forwarding to these is NOT flagged external)\n};\n// ===========================================\n\nconst now = new Date();\nreturn [{ json: {\n  ...cfg,\n  NOW_ISO: now.toISOString(),\n  SINCE_ISO: new Date(now.getTime() - cfg.LOOKBACK_HOURS * 3600 * 1000).toISOString()\n}}];\n"
+      },
+      "id": "f37e1c45-5370-4cc6-b81f-1ea9d5e42f38",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://graph.microsoft.com/v1.0/subscribedSkus",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "98232eba-b407-4558-b69a-13559e833b3f",
+      "name": "Get Licenses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        288,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,accountEnabled,userType,createdDateTime,assignedLicenses,proxyAddresses,onPremisesSyncEnabled&$top=999",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "pagination": {},
+          "timeout": 90000
+        }
+      },
+      "id": "6853e652-65b1-4b55-95ca-edbaafb4c9f6",
+      "name": "Get Users",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        528,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://graph.microsoft.com/v1.0/users?$select=id,signInActivity&$top=500",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "pagination": {},
+          "timeout": 90000
+        }
+      },
+      "id": "730e199c-8648-4c3b-98bd-9b002eda15a2",
+      "name": "Get Sign-in Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        272
+      ],
+      "retryOnFail": false,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://graph.microsoft.com/v1.0/groups?$select=id,displayName,mail,mailEnabled,securityEnabled,groupTypes,createdDateTime,visibility&$top=999",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "pagination": {},
+          "timeout": 90000
+        }
+      },
+      "id": "0b47a7db-36af-4feb-9e6f-dc9fc4e636b4",
+      "name": "Get Groups",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1008,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "executeOnce": true,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Graph $batch accepts 20 requests per call -> chunk the groups.\nconst groups = $('Get Groups').all().flatMap(i => Array.isArray(i.json.value) ? i.json.value : []);\n\nconst reqs = groups.map(g => ({\n  id: g.id,\n  method: 'GET',\n  url: `/groups/${g.id}/members?$select=id&$top=999`\n}));\n\n// $batch must never be empty; a harmless no-op keeps the chain alive.\nif (reqs.length === 0) reqs.push({ id: 'noop', method: 'GET', url: '/organization?$select=id' });\n\nconst out = [];\nfor (let i = 0; i < reqs.length; i += 20) {\n  out.push({ json: { batchBody: { requests: reqs.slice(i, i + 20) } } });\n}\nreturn out;\n"
+      },
+      "id": "6f88b425-e9d3-446d-a1b6-609672d3a083",
+      "name": "Build Group Member Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/$batch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.batchBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "8baa50a8-3dbf-47f7-b399-d828cf66475c",
+      "name": "Get Group Members",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1488,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// One \"inbox rules\" request per mailbox user, 20 per $batch call.\nconst users = $('Get Users').all().flatMap(i => Array.isArray(i.json.value) ? i.json.value : []);\n\nconst eligible = users.filter(u =>\n  u.accountEnabled !== false &&\n  (u.userType || 'Member') === 'Member' &&\n  u.mail\n);\n\nconst reqs = eligible.map(u => ({\n  id: u.id,\n  method: 'GET',\n  url: `/users/${u.id}/mailFolders/inbox/messageRules`\n}));\n\nif (reqs.length === 0) reqs.push({ id: 'noop', method: 'GET', url: '/organization?$select=id' });\n\nconst out = [];\nfor (let i = 0; i < reqs.length; i += 20) {\n  out.push({ json: { batchBody: { requests: reqs.slice(i, i + 20) } } });\n}\nreturn out;\n"
+      },
+      "id": "5fd5fd68-5fec-4b4f-9897-ff3a0819fd3d",
+      "name": "Build Mailbox Rule Batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/$batch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.batchBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "18c5bd99-15fc-45b2-a293-845642a23af6",
+      "name": "Get Mailbox Rules",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1968,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// One audit-log query per \"creation\" activity (avoids unreliable OR filters).\nconst S = $('Settings').first().json;\nreturn ['Add user', 'Add group', 'Invite external user'].map(activity => ({\n  json: { activity, since: S.SINCE_ISO }\n}));\n"
+      },
+      "id": "5d04c27b-f1ac-4fd2-9ae3-4b044b83c193",
+      "name": "Build Audit Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://graph.microsoft.com/v1.0/auditLogs/directoryAudits?$top=200&$filter=' + encodeURIComponent(\"activityDisplayName eq '\" + $json.activity + \"' and activityDateTime ge \" + $json.since) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "pagination": {},
+          "timeout": 90000
+        }
+      },
+      "id": "41b2ee93-e88b-4b39-a1d5-8f3082c601d1",
+      "name": "Get Audit Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2448,
+        272
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "74RkwNSRkY1B9Gon",
+          "name": "Office365-auth-token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================= Analyze & Build Report =======================\nconst S = $('Settings').first().json;\nconst nowMs = Date.parse(S.NOW_ISO);\nconst sinceMs = Date.parse(S.SINCE_ISO);\nconst DAY = 86400000;\nconst warnings = [];\n\nconst pages    = (name) => { try { return $(name).all(); } catch (e) { return []; } };\nconst failed   = (name) => pages(name).some(i => i.json && i.json.error);\nconst valuesOf = (name) => pages(name).flatMap(i => (i.json && Array.isArray(i.json.value)) ? i.json.value : []);\n\nconst esc = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;');\nconst ist = (ms) => ms ? new Date(ms + 19800000).toISOString().replace('T',' ').slice(0,16) + ' IST' : '';\nconst istDate = (ms) => new Date(ms + 19800000).toISOString().slice(0,10);\n\nconst FRIENDLY = {\n  O365_BUSINESS_ESSENTIALS:'Microsoft 365 Business Basic', O365_BUSINESS_PREMIUM:'Microsoft 365 Business Standard',\n  SPB:'Microsoft 365 Business Premium', SPE_E3:'Microsoft 365 E3', SPE_E5:'Microsoft 365 E5', SPE_F1:'Microsoft 365 F3',\n  ENTERPRISEPACK:'Office 365 E3', ENTERPRISEPREMIUM:'Office 365 E5', STANDARDPACK:'Office 365 E1', DESKLESSPACK:'Office 365 F3',\n  EXCHANGESTANDARD:'Exchange Online (Plan 1)', EXCHANGEENTERPRISE:'Exchange Online (Plan 2)', EXCHANGEDESKLESS:'Exchange Online Kiosk',\n  EXCHANGEARCHIVE_ADDON:'Exchange Online Archiving', AAD_PREMIUM:'Entra ID P1', AAD_PREMIUM_P2:'Entra ID P2',\n  EMS:'Enterprise Mobility + Security E3', EMSPREMIUM:'Enterprise Mobility + Security E5',\n  POWER_BI_STANDARD:'Power BI (free)', POWER_BI_PRO:'Power BI Pro', FLOW_FREE:'Power Automate Free',\n  TEAMS_EXPLORATORY:'Teams Exploratory', MCOMEETADV:'Microsoft 365 Audio Conferencing', PROJECTPREMIUM:'Project Plan 5',\n  PROJECTPROFESSIONAL:'Project Plan 3', VISIOCLIENT:'Visio Plan 2', WINDOWS_STORE:'Windows Store for Business'\n};\n\n// ---------------- licenses ----------------\nconst skus = valuesOf('Get Licenses');\nconst skuById = {};\nskus.forEach(s => { skuById[s.skuId] = s; });\nconst skuName = (id) => { const s = skuById[id]; return s ? (FRIENDLY[s.skuPartNumber] || s.skuPartNumber) : id; };\n\n// ---------------- users ----------------\nconst rawUsers = valuesOf('Get Users');\nif (!rawUsers.length) {\n  throw new Error('Get Users returned no data. Check the OAuth2 credential and the User.Read.All application permission (admin consent).');\n}\n\nconst signIn = {};\nvaluesOf('Get Sign-in Activity').forEach(u => {\n  const a = u.signInActivity || {};\n  const t = [a.lastSuccessfulSignInDateTime, a.lastSignInDateTime, a.lastNonInteractiveSignInDateTime]\n    .filter(Boolean).map(Date.parse);\n  signIn[u.id] = t.length ? Math.max(...t) : null;\n});\nconst signInOK = !failed('Get Sign-in Activity') && Object.keys(signIn).length > 0;\nif (!signInOK) warnings.push('Sign-in activity is unavailable (needs AuditLog.Read.All and Entra ID P1/P2). Login columns show \"n/a\".');\n\nconst internalDomains = new Set((S.EXTRA_INTERNAL_DOMAINS || []).map(d => String(d).toLowerCase()));\nrawUsers.filter(u => (u.userType || 'Member') !== 'Guest').forEach(u => {\n  const d = (u.userPrincipalName || '').split('@')[1];\n  if (d) internalDomains.add(d.toLowerCase());\n  (u.proxyAddresses || []).forEach(p => { const m = /^smtp:.+@(.+)$/i.exec(p); if (m) internalDomains.add(m[1].toLowerCase()); });\n});\n\nconst activeCut = nowMs - S.ACTIVE_DAYS * DAY;\nconst inactiveCut = nowMs - S.INACTIVE_DAYS * DAY;\n\nconst users = rawUsers.map(u => {\n  const proxies = u.proxyAddresses || [];\n  const primary = (proxies.find(p => p.startsWith('SMTP:')) || '').slice(5) || u.mail || '';\n  const aliases = proxies.filter(p => p.startsWith('smtp:')).map(p => p.slice(5))\n    .filter(a => a.toLowerCase() !== primary.toLowerCase());\n  return {\n    id: u.id, name: u.displayName || '', upn: u.userPrincipalName || '', primary, aliases,\n    licenses: (u.assignedLicenses || []).map(l => skuName(l.skuId)),\n    enabled: u.accountEnabled !== false, type: u.userType || 'Member',\n    created: u.createdDateTime ? Date.parse(u.createdDateTime) : null,\n    last: signInOK ? (signIn[u.id] ?? null) : undefined,\n    synced: !!u.onPremisesSyncEnabled\n  };\n});\nconst userById = new Map(users.map(u => [u.id, u]));\nconst lastText = (u) => !signInOK ? 'n/a' : (u.last ? ist(u.last) : 'Never / no data');\n\nconst members = users.filter(u => u.type !== 'Guest');\nconst guests = users.filter(u => u.type === 'Guest');\nconst licensed = users.filter(u => u.licenses.length);\nconst inactiveLicensed = !signInOK ? [] :\n  users.filter(u => u.licenses.length && u.enabled && (!u.last || u.last < inactiveCut));\n\n// ---------------- license summary + license-wise users ----------------\nconst licSummary = skus\n  .map(s => ({ name: FRIENDLY[s.skuPartNumber] || s.skuPartNumber, bought: (s.prepaidUnits || {}).enabled || 0, used: s.consumedUnits || 0 }))\n  .filter(s => s.bought || s.used)\n  .sort((a, b) => b.used - a.used);\nconst usersByLicense = {};\nusers.forEach(u => u.licenses.forEach(l => { (usersByLicense[l] = usersByLicense[l] || []).push(u); }));\nObject.values(usersByLicense).forEach(a => a.sort((x, y) => x.name.localeCompare(y.name)));\n\n// ---------------- groups + members ----------------\nconst rawGroups = valuesOf('Get Groups');\nconst memberData = {};\nlet batchFail = 0, failCodes = {};\npages('Get Group Members').forEach(it => {\n  if (it.json && it.json.error) { batchFail++; return; }\n  ((it.json && it.json.responses) || []).forEach(r => {\n    if (r.id === 'noop') return;\n    if (r.status === 200 && r.body) memberData[r.id] = { list: r.body.value || [], truncated: !!r.body['@odata.nextLink'] };\n    else { batchFail++; failCodes[r.status] = (failCodes[r.status] || 0) + 1; }\n  });\n});\nconst missingGroups = rawGroups.filter(g => !memberData[g.id]).length;\nif (missingGroups) warnings.push(`Member data could not be read for ${missingGroups} group(s) (needs GroupMember.Read.All). Their counts show \"n/a\".`);\n\nconst groupType = (g) => {\n  const t = g.groupTypes || [];\n  const dyn = t.includes('DynamicMembership') ? ' (dynamic)' : '';\n  if (t.includes('Unified')) return 'Microsoft 365' + dyn;\n  if (g.mailEnabled && g.securityEnabled) return 'Mail-enabled security' + dyn;\n  if (g.mailEnabled) return 'Distribution list' + dyn;\n  return 'Security' + dyn;\n};\n\nconst groups = rawGroups.map(g => {\n  const md = memberData[g.id];\n  let total = null, usersN = null, nested = null, active = null;\n  if (md) {\n    total = md.list.length;\n    const us = md.list.filter(m => String(m['@odata.type'] || '').endsWith('.user'));\n    usersN = us.length;\n    nested = md.list.filter(m => String(m['@odata.type'] || '').endsWith('.group')).length;\n    active = signInOK ? us.filter(m => { const u = userById.get(m.id); return u && u.last && u.last >= activeCut; }).length : null;\n  }\n  return {\n    id: g.id, name: g.displayName || '', type: groupType(g), mail: g.mail || '', visibility: g.visibility || '',\n    created: g.createdDateTime ? Date.parse(g.createdDateTime) : null,\n    total, usersN, nested, active, truncated: !!(md && md.truncated)\n  };\n}).sort((a, b) => (b.total ?? -1) - (a.total ?? -1) || a.name.localeCompare(b.name));\nif (groups.some(g => g.truncated)) warnings.push('Some groups have more than 999 members; their counts are capped at 999.');\n\nconst typeCounts = {};\ngroups.forEach(g => { typeCounts[g.type] = (typeCounts[g.type] || 0) + 1; });\n\n// ---------------- audit log: who / how ----------------\nconst audits = valuesOf('Get Audit Logs');\nconst auditOK = !failed('Get Audit Logs');\nif (!auditOK) warnings.push('Audit log is unavailable (needs AuditLog.Read.All; retention is 7 days, or 30 days with Entra ID P1/P2). \"Created by / method\" shows n/a.');\nconst auditBy = {};\naudits.forEach(a => (a.targetResources || []).forEach(t => {\n  if (t.id && (!auditBy[t.id] || a.activityDateTime < auditBy[t.id].activityDateTime)) auditBy[t.id] = a;\n}));\nconst howCreated = (id) => {\n  const a = auditBy[id];\n  if (!a) return { by: 'n/a', method: auditOK ? 'No audit record (synced from on-premises, or older than retention)' : 'n/a' };\n  const iu = a.initiatedBy && a.initiatedBy.user, ia = a.initiatedBy && a.initiatedBy.app;\n  const by = iu ? (iu.userPrincipalName || iu.displayName || 'user') : (ia ? (ia.displayName || 'application') : 'system');\n  const svc = a.loggedByService || '';\n  const ua = ((a.additionalDetails || []).find(d => /user-?agent/i.test(d.key)) || {}).value || '';\n  let method;\n  if (ia && !iu) method = 'Application / automation';\n  else if (svc === 'Self-service Group Management') method = 'Self-service (created by a user)';\n  else if (svc === 'Invited Users' || a.activityDisplayName === 'Invite external user') method = 'Guest invitation';\n  else if (/powershell/i.test(ua)) method = 'Admin via PowerShell';\n  else if (/mozilla|chrome|edge|safari/i.test(ua)) method = 'Admin via web portal';\n  else method = 'Admin (' + (svc || 'directory') + ')';\n  return { by, method };\n};\n\nconst newUsers = users.filter(u => u.created && u.created >= sinceMs).sort((a, b) => b.created - a.created);\nconst newGroups = groups.filter(g => g.created && g.created >= sinceMs).sort((a, b) => b.created - a.created);\n\n// ---------------- forwarding rules ----------------\nconst forwarding = [];\nlet ruleChecked = 0, ruleDenied = 0, ruleThrottled = 0, ruleErr = 0;\npages('Get Mailbox Rules').forEach(it => {\n  if (it.json && it.json.error) { ruleErr++; return; }\n  ((it.json && it.json.responses) || []).forEach(r => {\n    if (r.id === 'noop') return;\n    ruleChecked++;\n    if (r.status === 404) return;                       // no mailbox\n    if (r.status === 403) { ruleDenied++; return; }\n    if (r.status === 429) { ruleThrottled++; return; }\n    if (r.status !== 200 || !r.body) { ruleErr++; return; }\n    (r.body.value || []).forEach(rule => {\n      const a = rule.actions || {};\n      const add = (list, kind) => (list || []).forEach(x => {\n        const addr = x && x.emailAddress && x.emailAddress.address;\n        if (!addr) return;\n        const dom = addr.split('@')[1] ? addr.split('@')[1].toLowerCase() : '';\n        forwarding.push({ user: userById.get(r.id), rule: rule.displayName || '(unnamed)', kind, to: addr,\n          enabled: rule.isEnabled !== false, external: !internalDomains.has(dom) });\n      });\n      add(a.forwardTo, 'Forward'); add(a.forwardAsAttachmentTo, 'Forward as attachment'); add(a.redirectTo, 'Redirect');\n    });\n  });\n});\nif (ruleDenied) warnings.push(`Inbox rules could not be read for ${ruleDenied} mailbox(es) (needs Mail.Read application permission).`);\nif (ruleThrottled) warnings.push(`${ruleThrottled} mailbox(es) were throttled by Microsoft (HTTP 429); forwarding check is incomplete.`);\nif (ruleErr) warnings.push(`${ruleErr} mailbox rule request(s) failed unexpectedly.`);\nforwarding.sort((a, b) => Number(b.external) - Number(a.external) || (a.user ? a.user.name : '').localeCompare(b.user ? b.user.name : ''));\nconst extFwd = forwarding.filter(f => f.external && f.enabled);\n\n// ---------------- aliases ----------------\nconst withAlias = members.filter(u => u.aliases.length).sort((a, b) => a.name.localeCompare(b.name));\nconst aliasTotal = withAlias.reduce((n, u) => n + u.aliases.length, 0);\n\n// ============================== HTML ==============================\nconst C = { head: '#1f4e78', line: '#c9d3df', zebra: '#f5f8fb', bad: '#c0392b', warn: '#b9770e', ok: '#1e8449' };\nconst td = `border:1px solid ${C.line};padding:6px 8px;vertical-align:top;`;\nconst th = `border:1px solid ${C.line};padding:6px 8px;background:${C.head};color:#fff;text-align:left;`;\n\nconst table = (heads, rows, empty) => {\n  if (!rows.length) return `<p style=\"color:#666;margin:4px 0 0 0;\"><i>${esc(empty)}</i></p>`;\n  return `<table cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;font-size:12px;\">`\n    + `<tr>${heads.map(h => `<th style=\"${th}\">${esc(h)}</th>`).join('')}</tr>`\n    + rows.map((r, i) => `<tr style=\"${i % 2 ? `background:${C.zebra};` : ''}\">${r.map(c => `<td style=\"${td}\">${c}</td>`).join('')}</tr>`).join('')\n    + `</table>`;\n};\nconst h2 = (t, sub) => `<h3 style=\"color:${C.head};margin:26px 0 6px 0;border-bottom:2px solid ${C.head};padding-bottom:4px;\">${esc(t)}</h3>${sub ? `<p style=\"margin:0 0 8px 0;color:#555;font-size:12px;\">${sub}</p>` : ''}`;\nconst card = (label, value, color) => `<td style=\"width:20%;padding:4px;\"><div style=\"border:1px solid ${C.line};border-top:4px solid ${color || C.head};padding:8px;text-align:center;\"><div style=\"font-size:22px;font-weight:bold;color:${color || C.head};\">${esc(value)}</div><div style=\"font-size:11px;color:#555;\">${esc(label)}</div></div></td>`;\nconst pill = (t, color) => `<span style=\"background:${color};color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;\">${esc(t)}</span>`;\nconst na = (v) => (v === null || v === undefined) ? 'n/a' : v;\n\n// attention list\nconst attention = [];\nif (extFwd.length) attention.push(`<b style=\"color:${C.bad};\">${extFwd.length}</b> mailbox forwarding rule(s) send mail to <b>external</b> addresses.`);\nif (newUsers.length) attention.push(`<b>${newUsers.length}</b> new user(s) created in the last ${esc(S.LOOKBACK_HOURS)} hours.`);\nif (newGroups.length) attention.push(`<b>${newGroups.length}</b> new group(s) created in the last ${esc(S.LOOKBACK_HOURS)} hours.`);\nif (inactiveLicensed.length) attention.push(`<b>${inactiveLicensed.length}</b> licensed, enabled user(s) have not signed in for ${esc(S.INACTIVE_DAYS)}+ days (license cost).`);\nconst attentionHtml = attention.length\n  ? `<ul style=\"margin:6px 0 0 18px;padding:0;\">${attention.map(a => `<li style=\"margin:3px 0;\">${a}</li>`).join('')}</ul>`\n  : `<p style=\"margin:6px 0 0 0;color:${C.ok};\">Nothing needs attention today.</p>`;\n\nconst newUserRows = newUsers.map(u => { const h = howCreated(u.id); return [esc(ist(u.created)), `<b>${esc(u.name)}</b>`, esc(u.upn), esc(u.licenses.join(', ') || 'No license'), esc(h.by), esc(h.method)]; });\nconst newGroupRows = newGroups.map(g => { const h = howCreated(g.id); return [esc(ist(g.created)), `<b>${esc(g.name)}</b>`, esc(g.type), esc(g.mail || '-'), esc(na(g.total)), esc(h.by), esc(h.method)]; });\nconst fwdRows = forwarding.map(f => [\n  `<b>${esc(f.user ? f.user.name : '?')}</b><br><span style=\"color:#666;\">${esc(f.user ? f.user.upn : '')}</span>`,\n  esc(f.rule), esc(f.kind), esc(f.to),\n  f.external ? pill('EXTERNAL', C.bad) : pill('Internal', C.ok),\n  f.enabled ? 'Enabled' : '<span style=\"color:#888;\">Disabled</span>'\n]);\nconst groupRows = groups.map(g => [\n  `<b>${esc(g.name)}</b>`, esc(g.type), esc(g.mail || '-'), esc(na(g.total)), esc(na(g.usersN)), esc(na(g.nested)),\n  esc(signInOK ? na(g.active) : 'n/a'), esc(g.created ? ist(g.created).slice(0, 10) : '')\n]);\nconst licRows = licSummary.map(l => {\n  const avail = l.bought - l.used;\n  return [`<b>${esc(l.name)}</b>`, esc(l.bought), esc(l.used), `<b style=\"color:${avail <= 0 ? C.bad : (avail <= 3 ? C.warn : C.ok)};\">${esc(avail)}</b>`];\n});\nconst licenseUsersHtml = Object.keys(usersByLicense).sort((a, b) => usersByLicense[b].length - usersByLicense[a].length).map(l => {\n  const list = usersByLicense[l];\n  const shown = list.slice(0, S.MAX_LIST_PER_LICENSE);\n  const more = list.length - shown.length;\n  return `<p style=\"margin:12px 0 2px 0;\"><b>${esc(l)}</b> &mdash; ${list.length} user(s)</p>`\n    + `<p style=\"margin:0;font-size:12px;line-height:1.7;color:#333;\">${shown.map(u => `${esc(u.name)} <span style=\"color:#777;\">(${esc(u.upn)})</span>`).join('; ')}`\n    + (more > 0 ? ` <i>&hellip;and ${more} more &mdash; see License_wise_users.csv</i>` : '') + `</p>`;\n}).join('') || `<p style=\"color:#666;\"><i>No licensed users.</i></p>`;\nconst aliasRows = withAlias.slice(0, S.MAX_ALIAS_ROWS).map(u => [`<b>${esc(u.name)}</b>`, esc(u.primary), esc(u.aliases.join(', '))]);\n\nconst warnHtml = warnings.length\n  ? `<div style=\"border:1px solid ${C.warn};background:#fef5e7;padding:8px 12px;margin-top:18px;font-size:12px;\"><b style=\"color:${C.warn};\">Data-collection warnings</b><ul style=\"margin:4px 0 0 18px;padding:0;\">${warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>`\n  : '';\n\nconst html = `<html><body style=\"font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#222;\">\n<div style=\"background:${C.head};color:#fff;padding:14px 18px;\"><div style=\"font-size:19px;font-weight:bold;\">Microsoft 365 Tenant Report</div><div style=\"font-size:12px;opacity:.9;\">Generated ${esc(ist(nowMs))} &nbsp;|&nbsp; New-object window: last ${esc(S.LOOKBACK_HOURS)} hours</div></div>\n\n<div style=\"border:1px solid ${C.line};border-left:5px solid ${attention.length ? C.warn : C.ok};padding:8px 14px;margin:12px 0;\"><b>Needs attention</b>${attentionHtml}</div>\n\n<table cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;border-collapse:collapse;\"><tr>\n${card('Total users', users.length)}${card('Members', members.length)}${card('Guests', guests.length)}${card('Licensed', licensed.length, C.ok)}${card('Disabled', users.filter(u => !u.enabled).length, C.warn)}\n</tr><tr>\n${card('Groups', groups.length)}${card('New users', newUsers.length, newUsers.length ? C.warn : C.head)}${card('New groups', newGroups.length, newGroups.length ? C.warn : C.head)}${card('Forwarding rules', forwarding.length, extFwd.length ? C.bad : C.head)}${card('Users with aliases', withAlias.length)}\n</tr></table>\n\n${h2('1. New users created', `Last ${esc(S.LOOKBACK_HOURS)} hours. \"Created by / Method\" is taken from the Entra audit log.`)}\n${table(['Created (IST)', 'Name', 'User principal name', 'License', 'Created by', 'Method'], newUserRows, 'No new users were created.')}\n\n${h2('2. New groups created', `Last ${esc(S.LOOKBACK_HOURS)} hours.`)}\n${table(['Created (IST)', 'Group', 'Type', 'Email', 'Members', 'Created by', 'Method'], newGroupRows, 'No new groups were created.')}\n\n${h2('3. Mail forwarding', 'Inbox rules that forward or redirect mail. External = destination domain is not one of your tenant domains.')}\n${table(['User', 'Rule', 'Type', 'Forwards to', 'Scope', 'State'], fwdRows, 'No mailbox forwarding rules found.')}\n\n${h2('4. Groups and members', `Type counts: ${esc(Object.entries(typeCounts).map(([k, v]) => k + ' ' + v).join(' | ') || 'none')}.<br>\"Active users\" = members who signed in within the last ${esc(S.ACTIVE_DAYS)} days.`)}\n${table(['Group', 'Type', 'Email', 'Members', 'Users', 'Nested groups', `Active users (${S.ACTIVE_DAYS}d)`, 'Created'], groupRows, 'No groups found.')}\n\n${h2('5. License summary')}\n${table(['License', 'Purchased', 'Assigned', 'Available'], licRows, 'No license data.')}\n\n${h2('6. License-wise users', `Each user appears under every license assigned to them. Names per license are capped at ${esc(S.MAX_LIST_PER_LICENSE)}; the full list is in the attachment.`)}\n${licenseUsersHtml}\n\n${h2('7. Email aliases', `${withAlias.length} user(s) have ${aliasTotal} alias address(es) in total.${withAlias.length > S.MAX_ALIAS_ROWS ? ` Showing the first ${esc(S.MAX_ALIAS_ROWS)}; see All_Users.csv for the rest.` : ''}`)}\n${table(['User', 'Primary address', 'Aliases'], aliasRows, 'No alias addresses found.')}\n\n${warnHtml}\n<p style=\"font-size:11px;color:#777;margin-top:22px;border-top:1px solid ${C.line};padding-top:8px;\">Forwarding set by an administrator directly on the mailbox (ForwardingSmtpAddress) is not visible through Microsoft Graph and is not included. Attachments: All_Users.csv, Groups.csv, License_wise_users.csv${forwarding.length ? ', Forwarding.csv' : ''}.<br>Sent automatically by n8n.</p>\n</body></html>`;\n\n// ============================== CSV attachments ==============================\nconst csvCell = (v) => { let s = String(v ?? ''); if (/^[=+\\-@]/.test(s)) s = \"'\" + s; return /[\",\\r\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s; };\nconst csv = (heads, rows) => '\\uFEFF' + [heads, ...rows].map(r => r.map(csvCell).join(',')).join('\\r\\n');\nconst att = (name, content) => ({ '@odata.type': '#microsoft.graph.fileAttachment', name, contentType: 'text/csv', contentBytes: Buffer.from(content, 'utf8').toString('base64') });\n\nconst d = istDate(nowMs);\nconst attachments = [\n  att('All_Users.csv', csv(\n    ['Name', 'UserPrincipalName', 'PrimaryEmail', 'Aliases', 'Enabled', 'UserType', 'Licenses', 'Created (IST)', 'Last sign-in (IST)', 'SyncedFromOnPrem'],\n    users.map(u => [u.name, u.upn, u.primary, u.aliases.join('; '), u.enabled, u.type, u.licenses.join('; '), ist(u.created), lastText(u), u.synced]))),\n  att('Groups.csv', csv(\n    ['Group', 'Type', 'Email', 'Visibility', 'TotalMembers', 'UserMembers', 'NestedGroups', `ActiveUsers_${S.ACTIVE_DAYS}d`, 'Created (IST)'],\n    groups.map(g => [g.name, g.type, g.mail, g.visibility, na(g.total), na(g.usersN), na(g.nested), signInOK ? na(g.active) : 'n/a', ist(g.created)]))),\n  att('License_wise_users.csv', csv(\n    ['License', 'Name', 'UserPrincipalName', 'Enabled', 'Last sign-in (IST)'],\n    Object.keys(usersByLicense).sort().flatMap(l => usersByLicense[l].map(u => [l, u.name, u.upn, u.enabled, lastText(u)]))))\n];\nif (forwarding.length) attachments.push(att('Forwarding.csv', csv(\n  ['User', 'UserPrincipalName', 'Rule', 'Type', 'ForwardsTo', 'Scope', 'Enabled'],\n  forwarding.map(f => [f.user ? f.user.name : '', f.user ? f.user.upn : '', f.rule, f.kind, f.to, f.external ? 'EXTERNAL' : 'Internal', f.enabled]))));\n\nconst subject = `Microsoft 365 Report ${d} | New: ${newUsers.length} user(s), ${newGroups.length} group(s) | Forwarding: ${forwarding.length}${extFwd.length ? ` (${extFwd.length} EXTERNAL)` : ''}`;\n\nconst payload = { message: { subject, body: { contentType: 'HTML', content: html }, toRecipients: [{ emailAddress: { address: S.MAIL_TO } }], attachments } };\n\nreturn [{ json: {\n  payloadJson: JSON.stringify(payload),\n  summary: { users: users.length, groups: groups.length, newUsers: newUsers.length, newGroups: newGroups.length, forwarding: forwarding.length, externalForwarding: extFwd.length, warnings }\n}}];\n"
+      },
+      "id": "996637f0-c49a-4026-adb7-24d12518392a",
+      "name": "Analyze & Build Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/users/systems@ninestars.in/sendMail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payloadJson }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "9904d182-3c12-4a36-beca-ffb61bd393ce",
+      "name": "Send Report Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2928,
+        272
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "y5IDVbZRYipTQitN",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### 3. Analyse + send\n**Analyze & Build Report** builds the HTML mail and 3-4 CSV attachments.\nIf no users come back it fails on purpose so an empty report is never mailed.\nChange the sender mailbox in the URL of **Send Report Email**.",
+        "height": 230,
+        "width": 520,
+        "color": 5
+      },
+      "id": "bc32506b-8b23-45c0-a29a-b2e08c9c2ceb",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Licenses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Licenses": {
+      "main": [
+        [
+          {
+            "node": "Get Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Users": {
+      "main": [
+        [
+          {
+            "node": "Get Sign-in Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sign-in Activity": {
+      "main": [
+        [
+          {
+            "node": "Get Groups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Groups": {
+      "main": [
+        [
+          {
+            "node": "Build Group Member Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Group Member Batches": {
+      "main": [
+        [
+          {
+            "node": "Get Group Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Group Members": {
+      "main": [
+        [
+          {
+            "node": "Build Mailbox Rule Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Mailbox Rule Batches": {
+      "main": [
+        [
+          {
+            "node": "Get Mailbox Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Mailbox Rules": {
+      "main": [
+        [
+          {
+            "node": "Build Audit Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Audit Queries": {
+      "main": [
+        [
+          {
+            "node": "Get Audit Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Audit Logs": {
+      "main": [
+        [
+          {
+            "node": "Analyze & Build Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze & Build Report": {
+      "main": [
+        [
+          {
+            "node": "Send Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "5f777f73-63cd-4de7-a825-1b53a1cc6d0c",
+  "meta": {
+    "instanceId": "684055168b6a002a13a990f1f85459120e79f2860545a56b5af3df6b4d8a4084"
+  },
+  "id": "Mv7tLob7BD0JTAiC",
+  "tags": []
+}
